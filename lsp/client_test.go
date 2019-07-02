@@ -53,21 +53,13 @@ func TestPLS(t *testing.T) {
 // textDocument/didClose
 
 func (c *Client) testSendRecv(method string, p interface{}) ([]byte, error) {
-	r, err := c.NewRequest(method, p)
-	if err != nil {
-		return nil, err
-	}
 	var s json.RawMessage
-	if err := c.Call(r, &s); err != nil {
+	if err := c.Call(method, p, &s); err != nil {
 		return nil, err
 	}
 	return []byte(s), nil
 }
 
 func (c *Client) testNotify(method string, p interface{}) error {
-	r, err := c.NewNotification(method, p)
-	if err != nil {
-		return err
-	}
-	return c.Call(r, nil)
+	return c.Call(method, p, nil)
 }

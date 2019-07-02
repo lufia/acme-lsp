@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"golang.org/x/xerrors"
 )
 
+// PipeConn represents a connection to a process.
 type PipeConn struct {
 	cmd *exec.Cmd
 	r   io.ReadCloser
@@ -67,19 +69,59 @@ func (c *PipeConn) Close() error {
 	if err := c.cmd.Wait(); err != nil {
 		catch(err)
 	}
-	return xerrors.Errorf("can't kill gopls: %w", err)
+	return err
+}
+
+type request struct {
+	Version string      `json:"jsonrpc"`
+	ID      int         `json:"id,omitempty"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params"`
+}
+
+type response struct {
+	Version string          `json:"jsonrpc"`
+	ID      int             `json:"id"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   *ResponseError  `json:"error,omitempty"`
+}
+
+type ResponseError struct {
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data"`
+}
+
+func (e *ResponseError) Error() string {
+	return fmt.Sprintf("%d: %s", e.Code, e.Message)
+}
+
+type Call struct {
+	Method string
+	Args   interface{}
+	Reply  interface{}
+	Error  error
+
+	req  *request
+	done chan *Call
 }
 
 type Client struct {
 	BaseURL *url.URL
 	Debug   bool
 
-	nextID int
+	lastID int
 	conn   io.ReadWriteCloser
+	c      chan *Call
 }
 
 func NewClient(conn io.ReadWriteCloser) *Client {
-	return &Client{conn: conn}
+	c := &Client{
+		conn: conn,
+		c:    make(chan *Call),
+	}
+	go c.run()
+	return c
 }
 
 func (c *Client) debugf(format string, args ...interface{}) {
@@ -103,81 +145,105 @@ func (c *Client) SetRootURI(s string) error {
 	return nil
 }
 
-func (c *Client) Close() error {
-	return c.conn.Close()
-}
-
-type Notification struct {
-	Version string      `json:"jsonrpc"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params"`
-}
-
-func (c *Client) NewNotification(method string, p interface{}) (*Notification, error) {
-	r := &Notification{
-		Version: "2.0",
-		Method:  method,
-		Params:  p,
+func (c *Client) Call(method string, args, reply interface{}) error {
+	r := c.makeRequest(method, args, reply)
+	call := &Call{
+		Method: method,
+		Args:   args,
+		Reply:  reply,
+		req:    r,
+		done:   make(chan *Call, 1),
 	}
-	return r, nil
-}
-
-type Request struct {
-	Version string      `json:"jsonrpc"`
-	ID      int         `json:"id"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params"`
-}
-
-func (c *Client) NewRequest(method string, p interface{}) (*Request, error) {
-	c.nextID++
-	r := &Request{
-		Version: "2.0",
-		ID:      c.nextID,
-		Method:  method,
-		Params:  p,
+	c.c <- call
+	call = <-call.done
+	if call.Error != nil {
+		return call.Error
 	}
-	return r, nil
+	return nil
 }
 
-type Response struct {
-	Version string         `json:"jsonrpc"`
-	ID      int            `json:"id"`
-	Result  interface{}    `json:"result,omitempty"`
-	Error   *ResponseError `json:"error,omitempty"`
-}
-
-type ResponseError struct {
-	Code    int             `json:"code"`
-	Message string          `json:"message"`
-	Data    json.RawMessage `json:"data"`
-}
-
-func (e *ResponseError) Error() string {
-	return fmt.Sprintf("%d: %s", e.Code, e.Message)
-}
-
-func (c *Client) Call(args, reply interface{}) error {
-	if err := c.writeJSON(args); err != nil {
-		return err
+func (c *Client) reader(replyc chan<- *response) {
+	defer close(replyc)
+	r := bufio.NewReader(c.conn)
+	for {
+		resp, err := c.readResponse(r)
+		if err == io.EOF {
+			println("NO1")
+			return
+		}
+		if err != nil {
+			println("NO2", err.Error())
+			// TODO(lufia): where do we pass an error?
+			return
+		}
+		replyc <- resp
 	}
-	if reply == nil {
-		return nil
-	}
+}
 
-	rbuf := bufio.NewReader(c.conn)
+func (c *Client) run() {
+	callc := c.c
+	replyc := make(chan *response, 1)
+	go c.reader(replyc)
+
+	cache := make(map[int]*Call)
+	for callc != nil || replyc != nil {
+		select {
+		case resp, ok := <-replyc:
+			if !ok {
+				replyc = nil
+				continue
+			}
+			if resp.ID == 0 {
+				// TODO(lufia): notify from server to client
+				continue
+			}
+
+			call := cache[resp.ID]
+			if call == nil {
+				// a retried message from the server?
+				continue
+			}
+			delete(cache, resp.ID)
+			if resp.Error != nil {
+				call.Error = resp.Error
+				call.done <- call
+				continue
+			}
+			if err := json.Unmarshal([]byte(resp.Result), call.Reply); err != nil {
+				call.Error = err
+				call.done <- call
+				continue
+			}
+			call.done <- call
+		case call, ok := <-callc:
+			if !ok {
+				callc = nil
+				continue
+			}
+			if err := c.writeJSON(call.req); err != nil {
+				call.Error = err
+				call.done <- call
+				continue
+			}
+			if call.req.ID == 0 {
+				call.done <- call
+				continue
+			}
+			cache[call.req.ID] = call
+		}
+	}
+}
+
+func (c *Client) readResponse(r *bufio.Reader) (*response, error) {
 	var contentLen int64
 	for {
-		s, err := rbuf.ReadString('\n')
+		s, err := r.ReadString('\n')
 		if err != nil {
-			return err
+			return nil, err
 		}
 		s = strings.TrimSpace(s)
 		if s == "" {
 			break
-		}
-		if n := len(s); s[n-1] == '\r' {
-			s = s[:n-1]
 		}
 		a := strings.SplitN(s, ":", 2)
 		if len(a) < 2 {
@@ -185,20 +251,21 @@ func (c *Client) Call(args, reply interface{}) error {
 		}
 		switch strings.TrimSpace(a[0]) {
 		case "Content-Length":
-			contentLen, _ = strconv.ParseInt(strings.TrimSpace(a[1]), 10, 64)
+			v := strings.TrimSpace(a[1])
+			contentLen, _ = strconv.ParseInt(v, 10, 64)
 		}
 	}
 
-	var resp Response
-	resp.Result = reply
-	d := json.NewDecoder(io.LimitReader(rbuf, contentLen))
-	if err := d.Decode(&resp); err != nil {
-		return err
+	buf := bytes.NewBuffer(make([]byte, 0, contentLen))
+	if _, err := io.CopyN(buf, r, contentLen); err != nil {
+		return nil, err
 	}
-	if resp.Error != nil {
-		return resp.Error
+	c.debugf("<- '%s'\n", buf.Bytes())
+	var resp response
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		return nil, err
 	}
-	return nil
+	return &resp, nil
 }
 
 func (c *Client) writeJSON(args interface{}) error {
@@ -216,4 +283,23 @@ func (c *Client) writeJSON(args interface{}) error {
 		return xerrors.Errorf("can't write: %w", err)
 	}
 	return nil
+}
+
+func (c *Client) Close() error {
+	close(c.c)
+	return c.conn.Close()
+}
+
+func (c *Client) makeRequest(method string, args, reply interface{}) *request {
+	var id int
+	if reply != nil {
+		c.lastID++
+		id = c.lastID
+	}
+	return &request{
+		Version: "2.0",
+		ID:      id,
+		Method:  method,
+		Params:  args,
+	}
 }
