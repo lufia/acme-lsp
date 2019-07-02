@@ -16,8 +16,6 @@ import (
 )
 
 type PipeConn struct {
-	Debug bool
-
 	cmd *exec.Cmd
 	r   io.ReadCloser
 	w   io.WriteCloser
@@ -43,17 +41,10 @@ func OpenCommand(name string, args ...string) (*PipeConn, error) {
 }
 
 func (c *PipeConn) Read(b []byte) (int, error) {
-	n, err := c.r.Read(b)
-	if c.Debug {
-		fmt.Fprintf(os.Stderr, "<- '%s'\n", b)
-	}
-	return n, err
+	return c.r.Read(b)
 }
 
 func (c *PipeConn) Write(b []byte) (int, error) {
-	if c.Debug {
-		fmt.Fprintf(os.Stderr, "-> '%s'\n", b)
-	}
 	return c.w.Write(b)
 }
 
@@ -81,6 +72,7 @@ func (c *PipeConn) Close() error {
 
 type Client struct {
 	BaseURL *url.URL
+	Debug   bool
 
 	nextID int
 	conn   io.ReadWriteCloser
@@ -88,6 +80,12 @@ type Client struct {
 
 func NewClient(conn io.ReadWriteCloser) *Client {
 	return &Client{conn: conn}
+}
+
+func (c *Client) debugf(format string, args ...interface{}) {
+	if c.Debug {
+		fmt.Fprintf(os.Stderr, format, args...)
+	}
 }
 
 func (c *Client) SetRootURI(s string) error {
@@ -124,20 +122,6 @@ func (c *Client) NewNotification(method string, p interface{}) (*Notification, e
 	return r, nil
 }
 
-func (r *Notification) WriteTo(w io.Writer) (int64, error) {
-	p, err := json.Marshal(r)
-	if err != nil {
-		return 0, err
-	}
-	written, _ := fmt.Fprintf(w, "Content-Length: %d\r\n\r\n", len(p))
-	n, err := w.Write(p)
-	if err != nil {
-		return 0, err
-	}
-	written += n
-	return int64(written), nil
-}
-
 type Request struct {
 	Version string      `json:"jsonrpc"`
 	ID      int         `json:"id"`
@@ -154,20 +138,6 @@ func (c *Client) NewRequest(method string, p interface{}) (*Request, error) {
 		Params:  p,
 	}
 	return r, nil
-}
-
-func (r *Request) WriteTo(w io.Writer) (int64, error) {
-	p, err := json.Marshal(r)
-	if err != nil {
-		return 0, err
-	}
-	written, _ := fmt.Fprintf(w, "Content-Length: %d\r\n\r\n", len(p))
-	n, err := w.Write(p)
-	if err != nil {
-		return 0, err
-	}
-	written += n
-	return int64(written), nil
 }
 
 type Response struct {
@@ -187,11 +157,11 @@ func (e *ResponseError) Error() string {
 	return fmt.Sprintf("%d: %s", e.Code, e.Message)
 }
 
-func (c *Client) Do(r io.WriterTo, p interface{}) error {
-	if _, err := r.WriteTo(c.conn); err != nil {
-		return xerrors.Errorf("can't write a request: %w", err)
+func (c *Client) Call(args, reply interface{}) error {
+	if err := c.writeJSON(args); err != nil {
+		return err
 	}
-	if p == nil {
+	if reply == nil {
 		return nil
 	}
 
@@ -220,13 +190,30 @@ func (c *Client) Do(r io.WriterTo, p interface{}) error {
 	}
 
 	var resp Response
-	resp.Result = p
+	resp.Result = reply
 	d := json.NewDecoder(io.LimitReader(rbuf, contentLen))
 	if err := d.Decode(&resp); err != nil {
 		return err
 	}
 	if resp.Error != nil {
 		return resp.Error
+	}
+	return nil
+}
+
+func (c *Client) writeJSON(args interface{}) error {
+	p, err := json.Marshal(args)
+	if err != nil {
+		return xerrors.Errorf("can't marshal: %w", err)
+	}
+	c.debugf("-> '%s'\n", p)
+	_, err = fmt.Fprintf(c.conn, "Content-Length: %d\r\n\r\n", len(p))
+	if err != nil {
+		return xerrors.Errorf("can't write: %w", err)
+	}
+	_, err = c.conn.Write(p)
+	if err != nil {
+		return xerrors.Errorf("can't write: %w", err)
 	}
 	return nil
 }

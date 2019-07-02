@@ -12,9 +12,9 @@ func TestPLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	conn.Debug = true
 
 	c := NewClient(conn)
+	c.Debug = true
 	c.SetRootURI("testdata/pkg1")
 
 	t.Logf("initialize")
@@ -58,7 +58,7 @@ func (c *Client) testSendRecv(method string, p interface{}) ([]byte, error) {
 		return nil, err
 	}
 	var s json.RawMessage
-	if err := c.Do(r, &s); err != nil {
+	if err := c.Call(r, &s); err != nil {
 		return nil, err
 	}
 	return []byte(s), nil
@@ -69,5 +69,5 @@ func (c *Client) testNotify(method string, p interface{}) error {
 	if err != nil {
 		return err
 	}
-	return c.Do(r, nil)
+	return c.Call(r, nil)
 }
