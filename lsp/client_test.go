@@ -6,6 +6,56 @@ import (
 	"testing"
 )
 
+func TestMessage(t *testing.T) {
+	tests := []struct {
+		body   string
+		params bool
+		result bool
+	}{
+		{
+			body:   `{"id":1,"method":"test","params":{}}`,
+			params: true,
+		},
+		{
+			body:   `{"id":1,"method":"test","params":null}`,
+			params: true,
+		},
+		{
+			body:   `{"id":1,"method":"test","result":{}}`,
+			result: true,
+		},
+		{
+			body:   `{"id":1,"method":"test","result":null}`,
+			result: true,
+		},
+	}
+	for _, tt := range tests {
+		var msg Message
+		err := json.Unmarshal([]byte(tt.body), &msg)
+		if err != nil {
+			t.Fatalf("can't marshal: '%v'", tt.body)
+		}
+		if tt.params {
+			if msg.Params == nil {
+				t.Errorf("Marshal('%v') should have Params", tt.body)
+			}
+		} else {
+			if msg.Params != nil {
+				t.Errorf("Marshal('%v') shouldn't have Params", tt.body)
+			}
+		}
+		if tt.result {
+			if msg.Result == nil {
+				t.Errorf("Marshal('%v') should have Result", tt.body)
+			}
+		} else {
+			if msg.Result != nil {
+				t.Errorf("Marshal('%v') shouldn't have Result", tt.body)
+			}
+		}
+	}
+}
+
 func TestPLS(t *testing.T) {
 	conn, err := OpenCommand("gopls", "-v", "serve")
 	if err != nil {
@@ -33,7 +83,7 @@ func TestPLS(t *testing.T) {
 	}
 
 	t.Logf("textDocument/didOpen")
-	s, err = c.testSendRecv("textDocument/didOpen", &DidOpenTextDocumentParams{
+	err = c.testNotify("textDocument/didOpen", &DidOpenTextDocumentParams{
 		TextDocument: TextDocumentItem{
 			URI:        path.Join(c.BaseURL.String(), "pkg.go"),
 			LanguageID: "go",
@@ -44,7 +94,21 @@ func TestPLS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Logf("shutdown")
+	s, err = c.testSendRecv("shutdown", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("body: %s\n", s)
+
+	t.Logf("exit")
+	err = c.testNotify("exit", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.Close()
 }
 
 // textDocument/didChange

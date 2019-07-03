@@ -23,6 +23,7 @@ type PipeConn struct {
 	w   io.WriteCloser
 }
 
+// OpenCommand returns a connection to executing command.
 func OpenCommand(name string, args ...string) (*PipeConn, error) {
 	cmd := exec.Command(name, args...)
 	w, err := cmd.StdinPipe()
@@ -42,14 +43,17 @@ func OpenCommand(name string, args ...string) (*PipeConn, error) {
 	return &PipeConn{cmd: cmd, r: r, w: w}, nil
 }
 
+// Read reads bytes from stdout of c.
 func (c *PipeConn) Read(b []byte) (int, error) {
 	return c.r.Read(b)
 }
 
+// Write writes b to stdin of c.
 func (c *PipeConn) Write(b []byte) (int, error) {
 	return c.w.Write(b)
 }
 
+// Close exits c.
 func (c *PipeConn) Close() error {
 	var err error
 	catch := func(e error) {
@@ -72,26 +76,27 @@ func (c *PipeConn) Close() error {
 	return err
 }
 
-type request struct {
-	Version string      `json:"jsonrpc"`
-	ID      int         `json:"id,omitempty"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params"`
+type Message struct {
+	Version string `json:"jsonrpc"`
+	ID      int    `json:"id,omitempty"`
+	Method  string `json:"method"`
+
+	// This appears request or notification.
+	Params json.RawMessage `json:"params,omitempty"`
+
+	// These appears response only.
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *ResponseError  `json:"error,omitempty"`
 }
 
-type response struct {
-	Version string          `json:"jsonrpc"`
-	ID      int             `json:"id"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *ResponseError  `json:"error,omitempty"`
-}
-
+// ResponseError represents an error.
 type ResponseError struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data"`
 }
 
+// Error implements error interface.
 func (e *ResponseError) Error() string {
 	return fmt.Sprintf("%d: %s", e.Code, e.Message)
 }
@@ -102,12 +107,13 @@ type Call struct {
 	Reply  interface{}
 	Error  error
 
-	req  *request
+	msg  *Message
 	done chan *Call
 }
 
 type Client struct {
 	BaseURL *url.URL
+	Event   chan *Message
 	Debug   bool
 
 	lastID int
@@ -117,8 +123,9 @@ type Client struct {
 
 func NewClient(conn io.ReadWriteCloser) *Client {
 	c := &Client{
-		conn: conn,
-		c:    make(chan *Call),
+		Event: make(chan *Message, 10),
+		conn:  conn,
+		c:     make(chan *Call),
 	}
 	go c.run()
 	return c
@@ -145,13 +152,18 @@ func (c *Client) SetRootURI(s string) error {
 	return nil
 }
 
+// Call calls the method with args. If reply is nil,
+// this don't wait for reply. Therefore it is notification.
 func (c *Client) Call(method string, args, reply interface{}) error {
-	r := c.makeRequest(method, args, reply)
+	r, err := c.makeRequest(method, args, reply)
+	if err != nil {
+		return err
+	}
 	call := &Call{
 		Method: method,
 		Args:   args,
 		Reply:  reply,
-		req:    r,
+		msg:    r,
 		done:   make(chan *Call, 1),
 	}
 	c.c <- call
@@ -162,54 +174,52 @@ func (c *Client) Call(method string, args, reply interface{}) error {
 	return nil
 }
 
-func (c *Client) reader(replyc chan<- *response) {
+func (c *Client) reader(replyc chan<- *Message) {
 	defer close(replyc)
 	r := bufio.NewReader(c.conn)
 	for {
-		resp, err := c.readResponse(r)
+		msg, err := c.readMessage(r)
 		if err == io.EOF {
-			println("NO1")
 			return
 		}
 		if err != nil {
-			println("NO2", err.Error())
 			// TODO(lufia): where do we pass an error?
 			return
 		}
-		replyc <- resp
+		replyc <- msg
 	}
 }
 
 func (c *Client) run() {
 	callc := c.c
-	replyc := make(chan *response, 1)
+	replyc := make(chan *Message, 1)
 	go c.reader(replyc)
 
 	cache := make(map[int]*Call)
 	for callc != nil || replyc != nil {
 		select {
-		case resp, ok := <-replyc:
+		case msg, ok := <-replyc:
 			if !ok {
 				replyc = nil
 				continue
 			}
-			if resp.ID == 0 {
-				// TODO(lufia): notify from server to client
+			if msg.Params != nil { // request from the server
+				c.Event <- msg
 				continue
 			}
 
-			call := cache[resp.ID]
+			call := cache[msg.ID]
 			if call == nil {
-				// a retried message from the server?
 				continue
 			}
-			delete(cache, resp.ID)
-			if resp.Error != nil {
-				call.Error = resp.Error
+			delete(cache, msg.ID)
+			if msg.Error != nil {
+				call.Error = msg.Error
 				call.done <- call
 				continue
 			}
-			if err := json.Unmarshal([]byte(resp.Result), call.Reply); err != nil {
+			err := json.Unmarshal([]byte(msg.Result), call.Reply)
+			if err != nil {
 				call.Error = err
 				call.done <- call
 				continue
@@ -220,21 +230,21 @@ func (c *Client) run() {
 				callc = nil
 				continue
 			}
-			if err := c.writeJSON(call.req); err != nil {
+			if err := c.writeJSON(call.msg); err != nil {
 				call.Error = err
 				call.done <- call
 				continue
 			}
-			if call.req.ID == 0 {
+			if call.msg.ID == 0 {
 				call.done <- call
 				continue
 			}
-			cache[call.req.ID] = call
+			cache[call.msg.ID] = call
 		}
 	}
 }
 
-func (c *Client) readResponse(r *bufio.Reader) (*response, error) {
+func (c *Client) readMessage(r *bufio.Reader) (*Message, error) {
 	var contentLen int64
 	for {
 		s, err := r.ReadString('\n')
@@ -261,11 +271,11 @@ func (c *Client) readResponse(r *bufio.Reader) (*response, error) {
 		return nil, err
 	}
 	c.debugf("<- '%s'\n", buf.Bytes())
-	var resp response
-	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+	var msg Message
+	if err := json.Unmarshal(buf.Bytes(), &msg); err != nil {
 		return nil, err
 	}
-	return &resp, nil
+	return &msg, nil
 }
 
 func (c *Client) writeJSON(args interface{}) error {
@@ -290,16 +300,20 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-func (c *Client) makeRequest(method string, args, reply interface{}) *request {
+func (c *Client) makeRequest(method string, args, reply interface{}) (*Message, error) {
+	params, err := json.Marshal(args)
+	if err != nil {
+		return nil, err
+	}
 	var id int
 	if reply != nil {
 		c.lastID++
 		id = c.lastID
 	}
-	return &request{
+	return &Message{
 		Version: "2.0",
 		ID:      id,
 		Method:  method,
-		Params:  args,
-	}
+		Params:  json.RawMessage(params),
+	}, nil
 }
