@@ -76,6 +76,10 @@ func (c *PipeConn) Close() error {
 	return err
 }
 
+// Message represents request/response/notification messages.
+// If Params is not nil, client treats the message as a request.
+// If Result or Error is not nil, client treats the message as a response.
+// In addition to the above, If ID set to zero, client treats it as a notification.
 type Message struct {
 	Version string `json:"jsonrpc"`
 	ID      int    `json:"id,omitempty"`
@@ -101,6 +105,7 @@ func (e *ResponseError) Error() string {
 	return fmt.Sprintf("%d: %s", e.Code, e.Message)
 }
 
+// Call represents an active rpc.
 type Call struct {
 	Method string
 	Args   interface{}
@@ -111,6 +116,7 @@ type Call struct {
 	done chan *Call
 }
 
+// Client represents a language server protocol client.
 type Client struct {
 	BaseURL *url.URL
 	Event   chan *Message
@@ -121,6 +127,8 @@ type Client struct {
 	c      chan *Call
 }
 
+// NewClient returns a client that communicates to the server with conn.
+// This method starts goroutines, so you must call Close method after use.
 func NewClient(conn io.ReadWriteCloser) *Client {
 	c := &Client{
 		Event: make(chan *Message, 10),
@@ -154,19 +162,44 @@ func (c *Client) SetRootURI(s string) error {
 
 // Call calls the method with args. If reply is nil,
 // this don't wait for reply. Therefore it is notification.
-func (c *Client) Call(method string, args, reply interface{}) error {
-	r, err := c.makeRequest(method, args, reply)
-	if err != nil {
-		return err
-	}
+func (c *Client) Call(method string, args, reply interface{}) *Call {
 	call := &Call{
 		Method: method,
 		Args:   args,
 		Reply:  reply,
-		msg:    r,
 		done:   make(chan *Call, 1),
 	}
+	r, err := c.makeRequest(method, args, reply)
+	if err != nil {
+		call.Error = err
+		call.done <- call
+		return call
+	}
+	call.msg = r
 	c.c <- call
+	return call
+}
+
+func (c *Client) makeRequest(method string, args, reply interface{}) (*Message, error) {
+	params, err := json.Marshal(args)
+	if err != nil {
+		return nil, err
+	}
+	var id int
+	if reply != nil {
+		c.lastID++
+		id = c.lastID
+	}
+	return &Message{
+		Version: "2.0",
+		ID:      id,
+		Method:  method,
+		Params:  json.RawMessage(params),
+	}, nil
+}
+
+// Wait waits for a response of call.
+func (c *Client) Wait(call *Call) error {
 	call = <-call.done
 	if call.Error != nil {
 		return call.Error
@@ -295,25 +328,8 @@ func (c *Client) writeJSON(args interface{}) error {
 	return nil
 }
 
+// Close closes underlying resources such as a connection and goroutines.
 func (c *Client) Close() error {
 	close(c.c)
 	return c.conn.Close()
-}
-
-func (c *Client) makeRequest(method string, args, reply interface{}) (*Message, error) {
-	params, err := json.Marshal(args)
-	if err != nil {
-		return nil, err
-	}
-	var id int
-	if reply != nil {
-		c.lastID++
-		id = c.lastID
-	}
-	return &Message{
-		Version: "2.0",
-		ID:      id,
-		Method:  method,
-		Params:  json.RawMessage(params),
-	}, nil
 }

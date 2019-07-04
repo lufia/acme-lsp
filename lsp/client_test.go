@@ -2,7 +2,6 @@ package lsp
 
 import (
 	"encoding/json"
-	"path"
 	"testing"
 )
 
@@ -68,43 +67,34 @@ func TestPLS(t *testing.T) {
 	c.SetRootURI("testdata/pkg1")
 
 	t.Logf("initialize")
-	s, err := c.testSendRecv("initialize", &InitializeParams{
+	result := c.Initialize(&InitializeParams{
 		RootURI: c.BaseURL.String(),
+		Trace:   "verbose",
 	})
-	if err != nil {
+	if err := result.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("body: %s\n", s)
+	t.Logf("body: %v\n", *result)
 
 	t.Logf("initialized")
-	err = c.testNotify("initialized", &InitializedParams{})
-	if err != nil {
+	if err := c.Initialized(&InitializedParams{}); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Logf("textDocument/didOpen")
-	err = c.testNotify("textDocument/didOpen", &DidOpenTextDocumentParams{
-		TextDocument: TextDocumentItem{
-			URI:        path.Join(c.BaseURL.String(), "pkg.go"),
-			LanguageID: "go",
-			Version:    1,
-			Text:       "package pkg1\n\ntype Language struct {\n\tName string\n}\n\nfunc (l *Language) String() string {\n\treturn l.Name\n}\n",
-		},
-	})
-	if err != nil {
+	if err := c.DidOpenTextDocument("pkg.go", "go"); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Logf("shutdown")
-	s, err = c.testSendRecv("shutdown", nil)
-	if err != nil {
+	result1 := c.Shutdown()
+	if err := result1.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("body: %s\n", s)
+	t.Logf("body: %v\n", *result1)
 
 	t.Logf("exit")
-	err = c.testNotify("exit", nil)
-	if err != nil {
+	if err = c.Exit(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -115,15 +105,3 @@ func TestPLS(t *testing.T) {
 // ->textDocument/publishDiagnostics
 // textDocument/definition
 // textDocument/didClose
-
-func (c *Client) testSendRecv(method string, p interface{}) ([]byte, error) {
-	var s json.RawMessage
-	if err := c.Call(method, p, &s); err != nil {
-		return nil, err
-	}
-	return []byte(s), nil
-}
-
-func (c *Client) testNotify(method string, p interface{}) error {
-	return c.Call(method, p, nil)
-}
