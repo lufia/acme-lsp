@@ -161,7 +161,8 @@ func (c *Client) SetRootURI(s string) error {
 }
 
 // Call calls the method with args. If reply is nil,
-// this don't wait for reply. Therefore it is notification.
+// then call don't wait for reply. Therefore it is notification.
+// This is low level API.
 func (c *Client) Call(method string, args, reply interface{}) *Call {
 	call := &Call{
 		Method: method,
@@ -199,6 +200,7 @@ func (c *Client) makeRequest(method string, args, reply interface{}) (*Message, 
 }
 
 // Wait waits for a response of call.
+// This is low level API.
 func (c *Client) Wait(call *Call) error {
 	call = <-call.done
 	if call.Error != nil {
