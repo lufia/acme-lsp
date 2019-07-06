@@ -5,6 +5,39 @@ import (
 	"path"
 )
 
+/*
+ * field:  type | null => pointer to type
+ * field?: type        => omitempty
+ */
+
+type DocumentURI string
+
+// Position represents the interface described in the specification.
+type Position struct {
+	Line      int `json:"line"`
+	Character int `json:"character"`
+}
+
+// Range represents the interface described in the specification.
+type Range struct {
+	Start Position `json:"start"`
+	End   Position `json:"end"`
+}
+
+// Location represents the interface described in the specification.
+type Location struct {
+	URI   DocumentURI `json:"uri"`
+	Range Range       `json:"range"`
+}
+
+// LocationLink represents the interface described in the specification.
+type LocationLink struct {
+	OriginSelectionRange *Range      `json:"originSelectionRange,omitempty"`
+	TargetURI            DocumentURI `json:"targetUri"`
+	TargetRange          Range       `json:"targetRange"`
+	TargetSelectionRange `json:"targetSelectionRange"`
+}
+
 // InitializeParams represents the interface described in the specification.
 type InitializeParams struct {
 	ProcessID int    `json:"processId,omitempty"`
