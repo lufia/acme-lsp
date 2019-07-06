@@ -277,6 +277,7 @@ func (c *Client) run() {
 			cache[call.msg.ID] = call
 		}
 	}
+	close(c.Event)
 }
 
 func (c *Client) readMessage(r *bufio.Reader) (*Message, error) {

@@ -12,6 +12,21 @@ import (
 
 type DocumentURI string
 
+func (u DocumentURI) MarshalJSON() ([]byte, error) {
+	return []byte(`"file://` + string(u) + `"`), nil
+}
+
+func (u DocumentURI) String() string {
+	return string(u)
+}
+
+func (c *Client) URL(s string) DocumentURI {
+	if !path.IsAbs(s) {
+		s = path.Join(c.BaseURL.Path, s)
+	}
+	return DocumentURI(path.Clean(s))
+}
+
 // Position represents the interface described in the specification.
 type Position struct {
 	Line      int `json:"line"`
@@ -35,7 +50,7 @@ type LocationLink struct {
 	OriginSelectionRange *Range      `json:"originSelectionRange,omitempty"`
 	TargetURI            DocumentURI `json:"targetUri"`
 	TargetRange          Range       `json:"targetRange"`
-	TargetSelectionRange `json:"targetSelectionRange"`
+	TargetSelectionRange Range       `json:"targetSelectionRange"`
 }
 
 // InitializeParams represents the interface described in the specification.
@@ -50,7 +65,7 @@ type InitializeParams struct {
 
 // ClientCapabilities represents the interface described in the specification.
 type ClientCapabilities struct {
-	// TODO(lufia): implement
+	TextDocument TextDocumentClientCapabilities `json:"textDocument,omitempty"`
 }
 
 // TextDocumentClientCapabilities represents the interface described in the specification.
@@ -140,7 +155,8 @@ type ExecuteCommandOptions struct {
 
 // Initialize sends the initialize request to the server.
 func (c *Client) Initialize(params *InitializeParams) *InitializeResult {
-	params.ClientCapabilities.Definition.LinkSupport = true
+	// gopls don't support []LocationLink yet
+	params.Capabilities.TextDocument.Definition.LinkSupport = false
 
 	var result InitializeResult
 	result.c = c
@@ -193,22 +209,22 @@ type DidOpenTextDocumentParams struct {
 
 // TextDocumentItem represents the interface described in the specification.
 type TextDocumentItem struct {
-	URI        string `json:"uri"`
-	LanguageID string `json:"languageId"`
-	Version    int    `json:"version"`
-	Text       string `json:"text"`
+	URI        DocumentURI `json:"uri"`
+	LanguageID string      `json:"languageId"`
+	Version    int         `json:"version"`
+	Text       string      `json:"text"`
 }
 
 // DidOpenTextDocument sends the document open notification to the server.
 func (c *Client) DidOpenTextDocument(file, lang string) error {
-	f := path.Join(c.BaseURL.Path, file)
-	b, err := ioutil.ReadFile(f)
+	u := c.URL(file)
+	b, err := ioutil.ReadFile(u.String())
 	if err != nil {
 		return err
 	}
 	params := DidOpenTextDocumentParams{
 		TextDocument: TextDocumentItem{
-			URI:        path.Join(c.BaseURL.String(), file),
+			URI:        u,
 			LanguageID: lang,
 			Version:    1,
 			Text:       string(b),
@@ -216,4 +232,36 @@ func (c *Client) DidOpenTextDocument(file, lang string) error {
 	}
 	call := c.Call("textDocument/didOpen", &params, nil)
 	return c.Wait(call)
+}
+
+// TextDocumentPositionParams represents the interface described in the specification.
+type TextDocumentPositionParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+}
+
+// TextDocumentIdentifier represents the interface described in the specification.
+type TextDocumentIdentifier struct {
+	URI DocumentURI `json:"uri"`
+}
+
+// LocationsResult is
+type LocationsResult struct {
+	Locations []Location
+
+	c    *Client
+	call *Call
+}
+
+// GotoDefinition sends the go to definition request to the server.
+func (c *Client) GotoDefinition(params *TextDocumentPositionParams) *LocationsResult {
+	var result LocationsResult
+	result.c = c
+	result.call = c.Call("textDocument/definition", params, &result.Locations)
+	return &result
+}
+
+// Wait waits for a response of any request.
+func (r *LocationsResult) Wait() error {
+	return r.c.Wait(r.call)
 }

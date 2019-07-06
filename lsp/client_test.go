@@ -66,42 +66,73 @@ func TestPLS(t *testing.T) {
 	c.Debug = true
 	c.SetRootURI("testdata/pkg1")
 
-	t.Logf("initialize")
-	result := c.Initialize(&InitializeParams{
-		RootURI: c.BaseURL.String(),
-		Trace:   "verbose",
+	t.Run("initialize", func(t *testing.T) {
+		result := c.Initialize(&InitializeParams{
+			RootURI: c.URL("."),
+			Trace:   "verbose",
+		})
+		if err := result.Wait(); err != nil {
+			t.Errorf("Wait(): %v", err)
+		}
+		t.Logf("body: %v\n", *result)
 	})
-	if err := result.Wait(); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("body: %v\n", *result)
 
-	t.Logf("initialized")
-	if err := c.Initialized(&InitializedParams{}); err != nil {
-		t.Fatal(err)
-	}
+	t.Run("initialized", func(t *testing.T) {
+		if err := c.Initialized(&InitializedParams{}); err != nil {
+			t.Errorf("Initialized(): %v", err)
+		}
+	})
 
-	t.Logf("textDocument/didOpen")
-	if err := c.DidOpenTextDocument("pkg.go", "go"); err != nil {
-		t.Fatal(err)
-	}
+	t.Run("textDocument/didOpen", func(t *testing.T) {
+		if err := c.DidOpenTextDocument("pkg.go", "go"); err != nil {
+			t.Errorf("DidOpenTextDocument(): %v", err)
+		}
+	})
 
-	t.Logf("shutdown")
-	result1 := c.Shutdown()
-	if err := result1.Wait(); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("body: %v\n", *result1)
+	t.Run("textDocument/definition", func(t *testing.T) {
+		result := c.GotoDefinition(&TextDocumentPositionParams{
+			TextDocument: TextDocumentIdentifier{
+				URI: DocumentURI(c.URL("pkg.go").String()),
+			},
+			Position: Position{
+				Line:      6,
+				Character: 10,
+			},
+		})
+		if err := result.Wait(); err != nil {
+			t.Errorf("Wait(): %v", err)
+			return
+		}
+		if n := len(result.Locations); n != 1 {
+			t.Errorf("len(Locations) = %d; want 1", n)
+			return
+		}
+		want := Range{
+			Start: Position{Line: 2, Character: 5},
+			End:   Position{Line: 2, Character: 13},
+		}
+		if loc := result.Locations[0]; loc.Range != want {
+			t.Errorf("Location.Range = %v; want %v", loc.Range, want)
+		}
+	})
 
-	t.Logf("exit")
-	if err = c.Exit(); err != nil {
-		t.Fatal(err)
-	}
+	t.Run("shutdown", func(t *testing.T) {
+		result := c.Shutdown()
+		if err := result.Wait(); err != nil {
+			t.Errorf("Wait(): %v", err)
+		}
+		t.Logf("body: %v\n", *result)
+	})
+
+	t.Run("exit", func(t *testing.T) {
+		if err = c.Exit(); err != nil {
+			t.Errorf("Exit(): %v", err)
+		}
+	})
 
 	c.Close()
 }
 
 // textDocument/didChange
 // ->textDocument/publishDiagnostics
-// textDocument/definition
 // textDocument/didClose
