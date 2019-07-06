@@ -40,8 +40,8 @@ type LocationLink struct {
 
 // InitializeParams represents the interface described in the specification.
 type InitializeParams struct {
-	ProcessID int    `json:"processId,omitempty"`
-	RootURI   string `json:"rootUri,omitempty"`
+	ProcessID *int        `json:"processId"`
+	RootURI   DocumentURI `json:"rootUri"`
 
 	Capabilities ClientCapabilities `json:"capabilities"`
 
@@ -51,6 +51,26 @@ type InitializeParams struct {
 // ClientCapabilities represents the interface described in the specification.
 type ClientCapabilities struct {
 	// TODO(lufia): implement
+}
+
+// TextDocumentClientCapabilities represents the interface described in the specification.
+type TextDocumentClientCapabilities struct {
+	Declaration struct {
+		DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
+		LinkSupport         bool `json:"linkSupport,omitempty"`
+	} `json:"declaration,omitempty"`
+	Definition struct {
+		DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
+		LinkSupport         bool `json:"linkSupport,omitempty"`
+	} `json:"definition,omitempty"`
+	TypeDefinition struct {
+		DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
+		LinkSupport         bool `json:"linkSupport,omitempty"`
+	} `json:"typeDefinition,omitempty"`
+	Implementation struct {
+		DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
+		LinkSupport         bool `json:"linkSupport,omitempty"`
+	} `json:"implementation,omitempty"`
 }
 
 // InitializeResult represents the interface described in the specification.
@@ -63,18 +83,33 @@ type InitializeResult struct {
 
 // ServerCapabilities represents the interface described in the specification.
 type ServerCapabilities struct {
-	TextDocumentSync          TextDocumentSyncOptions `json:"textDocumentSync"`
-	HoverProvider             bool                    `json:"hoverProvider"`
-	CompletionProvider        CompletionOptions       `json:"completionProvider"`
-	SignatureHelpProvider     SignatureHelpOptions    `json:"signatureHelpProvider"`
-	DefinitionProvider        bool                    `json:"definitionProvider"`
-	ReferencesProvider        bool                    `json:"referencesProvider"`
-	DocumentHighlightProvider bool                    `json:"documentHighlightProvider"`
-	DocumentSymbolProvider    bool                    `json:"documentSymbolProvider"`
-	WorkspaceSymbolProvider   bool                    `json:"workspaceSymbolProvider"`
-	//CodeActionProvider bool or CodeActionOptions
-	DocumentFormattingProvider bool `json:"documentFormattingProvider"`
-	RenameProvider             bool `json:"renameProvider"`
+	// TODO(lufia): textDocumentSync is: TextDocumentSyncOption | number
+	// TODO(lufia): missing
+	// typeDefinitionProvider
+	// implementationProvider
+	// codeActionProvider
+	// codeLensProvider
+	// documentOnTypeFormattingProvider
+	// renameProvider
+	// documentLinkProvider
+	// colorProvider
+	// foldingRangeProvider
+	// declarationProvider
+	// workspace
+	// experimental
+
+	TextDocumentSync                TextDocumentSyncOptions `json:"textDocumentSync"`
+	HoverProvider                   bool                    `json:"hoverProvider,omitempty"`
+	CompletionProvider              CompletionOptions       `json:"completionProvider,omitempty"`
+	SignatureHelpProvider           SignatureHelpOptions    `json:"signatureHelpProvider,omitempty"`
+	DefinitionProvider              bool                    `json:"definitionProvider,omitempty"`
+	ReferencesProvider              bool                    `json:"referencesProvider,omitempty"`
+	DocumentHighlightProvider       bool                    `json:"documentHighlightProvider,omitempty"`
+	DocumentSymbolProvider          bool                    `json:"documentSymbolProvider,omitempty"`
+	WorkspaceSymbolProvider         bool                    `json:"workspaceSymbolProvider,omitempty"`
+	DocumentFormattingProvider      bool                    `json:"documentFormattingProvider,omitempty"`
+	DocumentRangeFormattingProvider bool                    `json:"documentRangeFormattingProvider,omitempty"`
+	ExecuteCommandProvider          ExecuteCommandOptions   `json:"executeCommandProvider,omitempty"`
 }
 
 //"documentLinkProvider"
@@ -98,8 +133,15 @@ type SignatureHelpOptions struct {
 	TriggerCharacters []string `json:"triggerCharacters"`
 }
 
+// ExecuteCommandOptions represents the interface described in the specification.
+type ExecuteCommandOptions struct {
+	Commands []string `json:"commands"`
+}
+
 // Initialize sends the initialize request to the server.
 func (c *Client) Initialize(params *InitializeParams) *InitializeResult {
+	params.ClientCapabilities.Definition.LinkSupport = true
+
 	var result InitializeResult
 	result.c = c
 	result.call = c.Call("initialize", params, &result)
