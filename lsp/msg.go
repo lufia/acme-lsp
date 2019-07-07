@@ -53,6 +53,17 @@ type LocationLink struct {
 	TargetSelectionRange Range       `json:"targetSelectionRange"`
 }
 
+// TextEdit represents the interface described in the specification.
+type TextEdit struct {
+	Range   Range  `json:"range"`
+	NewText string `json:"newText"`
+}
+
+// TextDocumentIdentifier represents the interface described in the specification.
+type TextDocumentIdentifier struct {
+	URI DocumentURI `json:"uri"`
+}
+
 // InitializeParams represents the interface described in the specification.
 type InitializeParams struct {
 	ProcessID *int        `json:"processId"`
@@ -234,15 +245,81 @@ func (c *Client) DidOpenTextDocument(file, lang string) error {
 	return c.Wait(call)
 }
 
+// DidChangeTextDocumentParams represents the interface described in the specification.
+type DidChangeTextDocumentParams struct {
+	TextDocument   VersionedTextDocumentIdentifier  `json:"textDocument"`
+	ContentChanges []TextDocumentContentChangeEvent `json:"contentChanges"`
+}
+
+// VersionedTextDocumentIdentifier represents the interface described in the specification.
+type VersionedTextDocumentIdentifier struct {
+	TextDocumentIdentifier
+	Version *int `json:"version"`
+}
+
+// TextDocumentContentChangeEvent represents the interface described in the specification.
+type TextDocumentContentChangeEvent struct {
+	Range       Range  `json:"range,omitempty"`
+	RangeLength int    `json:"rangeLength,omitempty"`
+	Text        string `json:"text"`
+}
+
+// DidChangeTextDocument sends the document change notification to the server.
+func (c *Client) DidChangeTextDocument(params *DidChangeTextDocumentParams) error {
+	call := c.Call("textDocument/didChange", params, nil)
+	return c.Wait(call)
+}
+
+// TextDocumentSaveReason represents reasons why a text document is saved.
+const (
+	TextDocumentSaveReasonManual     = 1
+	TextDocumentSaveReasonAfterDelay = 2
+	TextDocumentSaveReasonFocusOut   = 3
+)
+
+// WillSaveTextDocumentParams represents the interface described in the specification.
+type WillSaveTextDocumentParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Reason       int                    `json:"reason"`
+}
+
+// WillSaveTextDocument sends the document will save notification to the server.
+func (c *Client) WillSaveTextDocument(params *WillSaveTextDocumentParams) error {
+	call := c.Call("textDocument/willSave", params, nil)
+	return c.Wait(call)
+}
+
+type TextEditsResult struct {
+	TextEdits []TextEdit
+
+	c    *Client
+	call *Call
+}
+
+// WillSaveWaitUntilTextDocument sends the document will save request to the server.
+func (c *Client) WillSaveWaitUntilTextDocument(params *WillSaveTextDocumentParams) *TextEditsResult {
+	var result TextEditsResult
+	result.c = c
+	result.call = c.Call("textDocument/willSaveWaitUntil", params, &result.TextEdits)
+	return &result
+}
+
+// DidSaveTextDocumentParams represents the interface described in the specification.
+type DidSaveTextDocumentParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Text         string                 `json:"text,omitempty"`
+}
+
+// DidSaveTextDocument sends the document save notification to the server.
+func (c *Client) DidSaveTextDocument(params *DidSaveTextDocumentParams) error {
+	call := c.Call("textDocument/didSave", params, nil)
+	return c.Wait(call)
+}
+
 // TextDocumentPositionParams represents the interface described in the specification.
 type TextDocumentPositionParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
 	Position     Position               `json:"position"`
-}
-
-// TextDocumentIdentifier represents the interface described in the specification.
-type TextDocumentIdentifier struct {
-	URI DocumentURI `json:"uri"`
 }
 
 // LocationsResult is
