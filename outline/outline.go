@@ -3,6 +3,7 @@ package outline
 
 import (
 	"bufio"
+	"errors"
 	"io"
 )
 
@@ -12,7 +13,7 @@ type Pos uint
 // Addr is a combination of line number and column number.
 type Addr struct {
 	Line uint // 0 origin
-	Col  uint // 0 origin
+	Col  Pos  // 0 origin
 }
 
 // File is a mapper to convert two kind addresses.
@@ -48,14 +49,32 @@ func NewFile(r io.Reader) (*File, error) {
 	return &File{v: v}, nil
 }
 
+var errOutOfRange = errors.New("out of range")
+
 // Pos returns the offset pointing to addr.
 func (f *File) Pos(addr Addr) (Pos, error) {
-	return 0, nil
+	if addr.Line >= uint(len(f.v)) {
+		return 0, errOutOfRange
+	}
+	if addr.Col >= f.v[addr.Line] {
+		return 0, errOutOfRange
+	}
+	var p Pos
+	for _, v := range f.v[:addr.Line] {
+		p += v
+	}
+	return p + addr.Col, nil
 }
 
 // Addr returns the address pointing to p.
 func (f *File) Addr(p Pos) (Addr, error) {
-	return Addr{}, nil
+	for i, v := range f.v {
+		if p < v {
+			return Addr{Line: uint(i), Col: p}, nil
+		}
+		p -= v
+	}
+	return Addr{}, errOutOfRange
 }
 
 // Update updates the contents of f.
