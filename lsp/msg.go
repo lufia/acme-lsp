@@ -10,17 +10,41 @@ import (
  * field?: type        => omitempty
  */
 
+// DocumentURI represents the interface described in the specification.
 type DocumentURI string
 
+// MarshalJSON implements json.Marshaler interface.
 func (u DocumentURI) MarshalJSON() ([]byte, error) {
 	return []byte(`"file://` + string(u) + `"`), nil
 }
 
+// String returns absolute URI.
 func (u DocumentURI) String() string {
 	return string(u)
 }
 
+// SetRootURI updates c.BaseURL with s.
+func (c *Client) SetRootURI(s string) error {
+	if !path.IsAbs(s) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		s = path.Join(cwd, s)
+	}
+	var u url.URL
+	u.Scheme = "file"
+	u.Path = s
+	c.BaseURL = &u
+	return nil
+}
+
+// URL returns a document URI representation of s with c.BaseURL.
+// If c.BaseURL is nil, client will assume it to be current directory.
 func (c *Client) URL(s string) DocumentURI {
+	if c.BaseURL == nil {
+		c.SetRootURI(".")
+	}
 	if !path.IsAbs(s) {
 		s = path.Join(c.BaseURL.Path, s)
 	}
@@ -289,6 +313,7 @@ func (c *Client) WillSaveTextDocument(params *WillSaveTextDocumentParams) error 
 	return c.Wait(call)
 }
 
+// TextEditsResult represents a result object for methods returning an array of TextEdit.
 type TextEditsResult struct {
 	TextEdits []TextEdit
 
@@ -322,7 +347,7 @@ type TextDocumentPositionParams struct {
 	Position     Position               `json:"position"`
 }
 
-// LocationsResult is
+// LocationsResult represents a result object for methods returning an array of Location.
 type LocationsResult struct {
 	Locations []Location
 

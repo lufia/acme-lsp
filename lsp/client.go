@@ -1,3 +1,4 @@
+// Package lsp implements the language server protocol client.
 package lsp
 
 import (
@@ -143,21 +144,6 @@ func (c *Client) debugf(format string, args ...interface{}) {
 	if c.Debug {
 		fmt.Fprintf(os.Stderr, format, args...)
 	}
-}
-
-func (c *Client) SetRootURI(s string) error {
-	if !path.IsAbs(s) {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		s = path.Join(cwd, s)
-	}
-	var u url.URL
-	u.Scheme = "file"
-	u.Path = s
-	c.BaseURL = &u
-	return nil
 }
 
 // Call calls the method with args. If reply is nil,
