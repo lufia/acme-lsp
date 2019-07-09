@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"strings"
 )
 
 // Pos is a offset from top of a file.
@@ -28,6 +29,14 @@ type File struct {
 
 // NewFile returns File initialized with contents of r.
 func NewFile(r io.Reader) (*File, error) {
+	v, err := makeOutline(r)
+	if err != nil {
+		return nil, err
+	}
+	return &File{v: v}, nil
+}
+
+func makeOutline(r io.Reader) ([]Pos, error) {
 	b := bufio.NewReader(r)
 	var v []Pos
 	var c Pos
@@ -46,7 +55,7 @@ func NewFile(r io.Reader) (*File, error) {
 		}
 	}
 	v = append(v, c)
-	return &File{v: v}, nil
+	return v, nil
 }
 
 var errOutOfRange = errors.New("out of range")
@@ -56,7 +65,8 @@ func (f *File) Pos(addr Addr) (Pos, error) {
 	if addr.Line >= uint(len(f.v)) {
 		return 0, errOutOfRange
 	}
-	if addr.Col >= f.v[addr.Line] {
+	col := f.maxCol(addr.Line)
+	if addr.Col > col {
 		return 0, errOutOfRange
 	}
 	var p Pos
@@ -69,7 +79,8 @@ func (f *File) Pos(addr Addr) (Pos, error) {
 // Addr returns the address pointing to p.
 func (f *File) Addr(p Pos) (Addr, error) {
 	for i, v := range f.v {
-		if p < v {
+		col := f.maxCol(uint(i))
+		if p <= col {
 			return Addr{Line: uint(i), Col: p}, nil
 		}
 		p -= v
@@ -77,7 +88,41 @@ func (f *File) Addr(p Pos) (Addr, error) {
 	return Addr{}, errOutOfRange
 }
 
+func (f *File) maxCol(lineno uint) Pos {
+	n := f.v[lineno]
+	if n > 0 {
+		n--
+	}
+	return n
+}
+
 // Update updates the contents of f.
 func (f *File) Update(m, n Pos, text string) error {
+	bp, err := f.Addr(m)
+	if err != nil {
+		return err
+	}
+	ep, err := f.Addr(n)
+	if err != nil {
+		return err
+	}
+	t, err := makeOutline(strings.NewReader(text))
+	if err != nil {
+		return err
+	}
+
+	v := make([]Pos, len(f.v)+len(t))
+	p := copy(v, f.v[:bp.Line])
+	if bp.Col > 0 || t[0] > 0 {
+		v[p] += bp.Col + t[0]
+	}
+	if len(t) > 1 {
+		p++
+		p += copy(v[p:], t[1:]) - 1
+	}
+	v[p] += f.v[ep.Line] - ep.Col
+	p++
+	p += copy(v[p:], f.v[ep.Line+1:])
+	f.v = v[:p]
 	return nil
 }
