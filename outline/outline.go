@@ -2,6 +2,7 @@
 package outline
 
 import (
+	"bufio"
 	"io"
 )
 
@@ -26,7 +27,25 @@ type File struct {
 
 // NewFile returns File initialized with contents of r.
 func NewFile(r io.Reader) (*File, error) {
-	return nil, nil
+	b := bufio.NewReader(r)
+	var v []Pos
+	var c Pos
+	for {
+		r, _, err := b.ReadRune()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		c++
+		if r == '\n' {
+			v = append(v, c)
+			c = 0
+		}
+	}
+	v = append(v, c)
+	return &File{v: v}, nil
 }
 
 // Pos returns the offset pointing to addr.
