@@ -63,7 +63,7 @@ func TestPLS(t *testing.T) {
 	defer conn.Close()
 
 	c := NewClient(conn)
-	c.Debug = true
+	c.Debug = testing.Verbose()
 	c.SetRootURI("testdata/pkg1")
 
 	t.Run("initialize", func(t *testing.T) {
