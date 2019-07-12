@@ -1,35 +1,164 @@
 package main
 
 import (
-	"log"
+	"bytes"
 	"strings"
 	"time"
 
 	"9fans.net/go/acme"
+	"github.com/lufia/acme-lsp/lsp"
 	"github.com/lufia/acme-lsp/outline"
 )
 
 type Win struct {
+	file string
 	acme *acme.Win
 	tag  string
+	c    *lsp.Client
 	f    *outline.File
 }
 
-func (w *Win) Execute(line string) bool {
-	return false
+func OpenFile(id int, file string, c *lsp.Client) (*Win, error) {
+	p, err := acme.Open(id, nil)
+	if err != nil {
+		time.Sleep(10 * time.Millisecond)
+		p, err = acme.Open(id, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	w := Win{
+		file: file,
+		acme: p,
+		tag:  "Def",
+		c:    c,
+	}
+
+	body, err := p.ReadAll("body")
+	if err != nil {
+		w.Close()
+		return nil, err
+	}
+	f, err := outline.NewFile(bytes.NewReader(body))
+	if err != nil {
+		w.Close()
+		return nil, err
+	}
+	w.f = f
+	w.acme.Fprintf("tag", " %s ", w.tag)
+	if err := w.openFile(); err != nil {
+		w.Close()
+		return nil, err
+	}
+	return &w, nil
 }
 
-func (w *Win) Look(text string) bool {
-	return false
+func (w *Win) openFile() error {
+	return w.c.DidOpenTextDocument(w.file, "go")
 }
 
-func start() error {
-	acme.AutoExit(true)
+func (w *Win) closeFile() error {
+	// TODO(lufia): willClose
+	return nil
+}
+
+func (w *Win) watch() {
+	for e := range w.acme.EventChan() {
+		ok, err := w.execute(e)
+		if err != nil {
+			w.acme.Errf("%v", err)
+			continue
+		}
+		if !ok {
+			if err := w.acme.WriteEvent(e); err != nil {
+				w.acme.Errf("%v", err)
+			}
+		}
+	}
+}
+
+func (w *Win) execute(e *acme.Event) (bool, error) {
+	//w.acme.Errf("%c: Q={%d %d} %b Nb=%d Nr=%d %q %q %q", e.C2, e.Q0, e.Q1, e.Flag, e.Nb, e.Nr, e.Text, e.Arg, e.Loc)
+	p0 := outline.Pos(e.Q0)
+	p1 := outline.Pos(e.Q1)
+	cmd := string(e.Text)
+	switch e.C2 {
+	case 'I':
+		return true, w.f.Update(p0, p1, string(e.Text))
+	case 'D':
+		return true, w.f.Update(p0, p1, "")
+	case 'x', 'X':
+		if cmd == "Def" {
+			return true, w.ExecDef()
+		}
+	case 'l', 'L':
+	}
+	return false, nil
+}
+
+func (w *Win) ExecDef() error {
+	if err := w.acme.Ctl("addr=dot"); err != nil {
+		return err
+	}
+	q0, q1, err := w.acme.ReadAddr()
+	if err != nil {
+		return err
+	}
+	w.acme.Errf("Def: %d %d %v", q0, q1, err)
+	p0 := outline.Pos(q0)
+	addr, err := w.f.Addr(p0)
+	if err != nil {
+		return err
+	}
+	r := w.c.GotoDefinition(&lsp.TextDocumentPositionParams{
+		TextDocument: lsp.TextDocumentIdentifier{
+			URI: w.c.URL(w.file),
+		},
+		Position: lsp.Position{
+			Line:      int(addr.Line),
+			Character: int(addr.Col),
+		},
+	})
+	if err := r.Wait(); err != nil {
+		return err
+	}
+
+	pos := func(p lsp.Position) (int, error) {
+		v, err := w.f.Pos(outline.Addr{
+			Line: uint(p.Line),
+			Col:  outline.Pos(int(p.Character)),
+		})
+		if err != nil {
+			return 0, err
+		}
+		return int(v), nil
+	}
+	l := r.Locations[0]
+	file := l.URI.String()
+	q0, err = pos(l.Range.Start)
+	if err != nil {
+		return err
+	}
+	q1, err = pos(l.Range.End)
+	if err != nil {
+		return err
+	}
+	w.acme.Errf("%s:#%d,#%d", file, q0, q1)
+	return nil
+}
+
+func (w *Win) Close() {
+	w.acme.CloseFiles()
+}
+
+func start(c *lsp.Client) error {
 	r, err := acme.Log()
 	if err != nil {
 		return err
 	}
 	defer r.Close()
+
+	wins := make(map[int]*Win)
 	for {
 		ev, err := r.Read()
 		if err != nil {
@@ -40,28 +169,18 @@ func start() error {
 		}
 		switch ev.Op {
 		case "new":
-			log.Println("NEW:", ev.ID, ev.Name)
-			// acme.Open(ev.ID, ev.Name)
+			w, err := OpenFile(ev.ID, ev.Name, c)
+			if err != nil {
+				acme.Errf("./log", "can't watch: %v", err)
+				continue
+			}
+			wins[ev.ID] = w
+			go w.watch()
 		case "del":
-			log.Println("DEL:", ev.ID, ev.Name)
-			// close(ev.ID)
+			if w, ok := wins[ev.ID]; ok {
+				w.Close()
+			}
+			delete(wins, ev.ID)
 		}
 	}
-}
-
-func open(file string) (*Win, error) {
-	var err error
-	var w Win
-	w.tag = "Def"
-	w.acme, err = acme.New()
-	if err != nil {
-		time.Sleep(10 * time.Millisecond)
-		w.acme, err = acme.New()
-		if err != nil {
-			return nil, err
-		}
-	}
-	w.acme.Fprintf("tag", " %s ", w.tag)
-	go w.acme.EventLoop(&w)
-	return &w, nil
 }
