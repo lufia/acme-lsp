@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"time"
 
@@ -46,14 +47,14 @@ func OpenFile(id int, file string, c *lsp.Client) (*Win, error) {
 	}
 	w.f = f
 	w.acme.Fprintf("tag", " %s ", w.tag)
-	if err := w.openFile(); err != nil {
+	if err := w.didOpenFile(); err != nil {
 		w.Close()
 		return nil, err
 	}
 	return &w, nil
 }
 
-func (w *Win) openFile() error {
+func (w *Win) didOpenFile() error {
 	return w.c.DidOpenTextDocument(w.file, "go")
 }
 
@@ -70,6 +71,7 @@ func (w *Win) watch() {
 			continue
 		}
 		if !ok {
+			// TODO(lufia): kbd event will become an error.
 			if err := w.acme.WriteEvent(e); err != nil {
 				w.acme.Errf("%v", err)
 			}
@@ -123,28 +125,46 @@ func (w *Win) ExecDef() error {
 		return err
 	}
 
+	l := r.Locations[0]
+	file := l.URI.String()
+	q0, q1, err = rangeToPos(l.URI.String(), &l.Range)
+	if err != nil {
+		return err
+	}
+	w.acme.Errf("%s:#%d,#%d", file, q0, q1)
+	return nil
+}
+
+func rangeToPos(file string, r *lsp.Range) (q0, q1 int, err error) {
+	fin, err := os.Open(file)
+	if err != nil {
+		return
+	}
+	defer fin.Close()
+
+	f, err := outline.NewFile(fin)
+	if err != nil {
+		return
+	}
 	pos := func(p lsp.Position) (int, error) {
-		v, err := w.f.Pos(outline.Addr{
+		v, err := f.Pos(outline.Addr{
 			Line: uint(p.Line),
-			Col:  outline.Pos(int(p.Character)),
+			Col:  outline.Pos(p.Character),
 		})
 		if err != nil {
 			return 0, err
 		}
 		return int(v), nil
 	}
-	l := r.Locations[0]
-	file := l.URI.String()
-	q0, err = pos(l.Range.Start)
+	q0, err = pos(r.Start)
 	if err != nil {
-		return err
+		return
 	}
-	q1, err = pos(l.Range.End)
+	q1, err = pos(r.End)
 	if err != nil {
-		return err
+		return
 	}
-	w.acme.Errf("%s:#%d,#%d", file, q0, q1)
-	return nil
+	return
 }
 
 func (w *Win) Close() {

@@ -12,17 +12,20 @@ import (
  * field?: type        => omitempty
  */
 
+const fileSchema = "file://"
+
 // DocumentURI represents the interface described in the specification.
 type DocumentURI string
 
 // MarshalJSON implements json.Marshaler interface.
 func (u DocumentURI) MarshalJSON() ([]byte, error) {
-	return []byte(`"file://` + string(u) + `"`), nil
+	return []byte(`"` + string(u) + `"`), nil
 }
 
 // String returns absolute URI.
 func (u DocumentURI) String() string {
-	return string(u)
+	n := len(fileSchema)
+	return string(u[n:])
 }
 
 // SetRootURI updates c.BaseURL with s.
@@ -50,7 +53,7 @@ func (c *Client) URL(s string) DocumentURI {
 	if !path.IsAbs(s) {
 		s = path.Join(c.BaseURL.Path, s)
 	}
-	return DocumentURI(path.Clean(s))
+	return DocumentURI(fileSchema + path.Clean(s))
 }
 
 // Position represents the interface described in the specification.
