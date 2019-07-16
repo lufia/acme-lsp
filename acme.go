@@ -83,19 +83,64 @@ func (w *Win) execute(e *acme.Event) (bool, error) {
 	//w.acme.Errf("%c: Q={%d %d} %b Nb=%d Nr=%d %q %q %q", e.C2, e.Q0, e.Q1, e.Flag, e.Nb, e.Nr, e.Text, e.Arg, e.Loc)
 	p0 := outline.Pos(e.Q0)
 	p1 := outline.Pos(e.Q1)
-	cmd := string(e.Text)
+	s := string(e.Text)
 	switch e.C2 {
 	case 'I':
+		params, err := w.makeContentChangeEvent(p0, p1, s)
+		if err != nil {
+			return true, err
+		}
+		w.c.DidChangeTextDocument(params)
 		return true, w.f.Update(p0, p1, string(e.Text))
 	case 'D':
+		params, err := w.makeContentChangeEvent(p0, p1, s)
+		if err != nil {
+			return true, err
+		}
+		w.c.DidChangeTextDocument(params)
 		return true, w.f.Update(p0, p1, "")
 	case 'x', 'X':
-		if cmd == "Def" {
+		if s == "Def" {
 			return true, w.ExecDef()
 		}
 	case 'l', 'L':
 	}
 	return false, nil
+}
+
+func (w *Win) makeContentChangeEvent(p0, p1 outline.Pos, s string) (*lsp.DidChangeTextDocumentParams, error) {
+	a0, err := w.f.Addr(p0)
+	if err != nil {
+		return nil, err
+	}
+	a1, err := w.f.Addr(p1)
+	if err != nil {
+		return nil, err
+	}
+	return &lsp.DidChangeTextDocumentParams{
+		TextDocument: lsp.VersionedTextDocumentIdentifier{
+			TextDocumentIdentifier: lsp.TextDocumentIdentifier{
+				URI: w.c.URL(w.file),
+			},
+			Version: nil, // TODO(lufia): implement
+		},
+		ContentChanges: []lsp.TextDocumentContentChangeEvent{
+			{
+				Range: lsp.Range{
+					Start: lsp.Position{
+						Line:      int(a0.Line),
+						Character: int(a0.Col),
+					},
+					End: lsp.Position{
+						Line:      int(a1.Line),
+						Character: int(a1.Col),
+					},
+				},
+				RangeLength: int(p1 - p0),
+				Text:        s,
+			},
+		},
+	}, nil
 }
 
 func (w *Win) ExecDef() error {
