@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"strings"
+	"path"
 	"time"
 
 	"9fans.net/go/acme"
@@ -91,14 +91,18 @@ func (w *Win) execute(e *acme.Event) (bool, error) {
 		if err != nil {
 			return true, err
 		}
-		w.c.DidChangeTextDocument(params)
-		return true, w.f.Update(p0, p1, string(e.Text))
+		if err := w.c.DidChangeTextDocument(params); err != nil {
+			return true, err
+		}
+		return true, w.f.Update(p0, p1, s)
 	case 'D':
 		params, err := w.makeContentChangeEvent(p0, p1, s)
 		if err != nil {
 			return true, err
 		}
-		w.c.DidChangeTextDocument(params)
+		if err := w.c.DidChangeTextDocument(params); err != nil {
+			return true, err
+		}
 		return true, w.f.Update(p0, p1, "")
 	case 'x', 'X':
 		if s == "Def" {
@@ -255,7 +259,7 @@ func start(c *lsp.Client) error {
 		if err != nil {
 			return err
 		}
-		if !strings.HasSuffix(ev.Name, ".go") {
+		if path.Ext(ev.Name) != ".go" {
 			continue
 		}
 		switch ev.Op {
