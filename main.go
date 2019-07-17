@@ -8,7 +8,9 @@ import (
 )
 
 func main() {
-	acme.AutoExit(true)
+	// This app watches all window.
+	acme.AutoExit(false)
+
 	conn, err := lsp.OpenCommand("gopls", "-v", "serve")
 	if err != nil {
 		log.Fatal(err)
