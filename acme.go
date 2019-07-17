@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"strings"
 	"time"
@@ -217,6 +218,31 @@ func (w *Win) Close() {
 }
 
 func start(c *lsp.Client) error {
+	go func() {
+		for msg := range c.Event {
+			switch msg.Method {
+			case "textDocument/publishDiagnostics":
+				var params lsp.PublishDiagnosticsParams
+				err := json.Unmarshal([]byte(msg.Params), &params)
+				if err != nil {
+					acme.Errf(".", "lsp: %s: %s", msg.Method, msg.Params)
+					continue
+				}
+				file := params.URI.String()
+				for _, v := range params.Diagnostics {
+					q0, q1, err := rangeToPos(file, &v.Range)
+					if err != nil {
+						acme.Errf(file, "lsp: %s: %s", msg.Method, msg.Params)
+						continue
+					}
+					acme.Errf(file, "%s:#%d,#%d %s", path.Base(file), q0, q1, v.Message)
+				}
+			default:
+				acme.Errf(".", "lsp: %s: %s", msg.Method, msg.Params)
+			}
+		}
+	}()
+
 	r, err := acme.Log()
 	if err != nil {
 		return err
