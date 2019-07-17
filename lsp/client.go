@@ -224,7 +224,11 @@ func (c *Client) run() {
 				continue
 			}
 			if msg.Params != nil { // request from the server
-				c.Event <- msg
+				// shouldn't block even if c.Event is full.
+				select {
+				case c.Event <- msg:
+				default:
+				}
 				continue
 			}
 

@@ -136,3 +136,38 @@ func TestPLS(t *testing.T) {
 // textDocument/didChange
 // ->textDocument/publishDiagnostics
 // textDocument/didClose
+
+func TestClientEventOverflow(t *testing.T) {
+	conn, err := OpenCommand("gopls", "-v", "serve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	c := NewClient(conn)
+
+	m := &Message{
+		Version: "2.0",
+		Method:  "test/didReceiveMessage",
+		Params:  json.RawMessage(`{}`),
+	}
+
+	// fulfill c.Event buffers
+	for i := 0; i < cap(c.Event); i++ {
+		c.Event <- m
+	}
+
+	result1 := c.Initialize(&InitializeParams{
+		RootURI: c.URL("."),
+	})
+	if err := result1.Wait(); err != nil {
+		t.Errorf("Wait(): %v", err)
+	}
+	if err := c.Initialized(&InitializedParams{}); err != nil {
+		t.Errorf("Initialized(): %v", err)
+	}
+
+	result3 := c.Shutdown()
+	if err := result3.Wait(); err != nil {
+		t.Errorf("Wait(): %v", err)
+	}
+}
