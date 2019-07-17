@@ -32,7 +32,7 @@ func OpenFile(id int, file string, c *lsp.Client) (*Win, error) {
 	w := Win{
 		file: file,
 		acme: p,
-		tag:  "Def",
+		tag:  "Put Def",
 		c:    c,
 	}
 
@@ -66,51 +66,39 @@ func (w *Win) closeFile() error {
 
 func (w *Win) watch() {
 	for e := range w.acme.EventChan() {
-		ok, err := w.execute(e)
-		if err != nil {
+		if err := w.handleEvent(e); err != nil {
 			w.acme.Errf("%v", err)
 			continue
-		}
-		if !ok {
-			// TODO(lufia): kbd event will become an error.
-			if err := w.acme.WriteEvent(e); err != nil {
-				w.acme.Errf("%v", err)
-			}
 		}
 	}
 }
 
-func (w *Win) execute(e *acme.Event) (bool, error) {
-	//w.acme.Errf("%c: Q={%d %d} %b Nb=%d Nr=%d %q %q %q", e.C2, e.Q0, e.Q1, e.Flag, e.Nb, e.Nr, e.Text, e.Arg, e.Loc)
+func (w *Win) handleEvent(e *acme.Event) error {
 	p0 := outline.Pos(e.Q0)
 	p1 := outline.Pos(e.Q1)
 	s := string(e.Text)
 	switch e.C2 {
 	case 'I':
-		params, err := w.makeContentChangeEvent(p0, p1, s)
-		if err != nil {
-			return true, err
-		}
-		if err := w.c.DidChangeTextDocument(params); err != nil {
-			return true, err
-		}
-		return true, w.f.Update(p0, p1, s)
+		off := p1 - p0
+		return w.updateBody(p0, p1-off, s)
 	case 'D':
-		params, err := w.makeContentChangeEvent(p0, p1, s)
-		if err != nil {
-			return true, err
-		}
-		if err := w.c.DidChangeTextDocument(params); err != nil {
-			return true, err
-		}
-		return true, w.f.Update(p0, p1, "")
+		return w.updateBody(p0, p1, "")
 	case 'x', 'X':
-		if s == "Def" {
-			return true, w.ExecDef()
-		}
+		return w.execute(e)
 	case 'l', 'L':
 	}
-	return false, nil
+	return nil
+}
+
+func (w *Win) updateBody(p0, p1 outline.Pos, s string) error {
+	params, err := w.makeContentChangeEvent(p0, p1, s)
+	if err != nil {
+		return err
+	}
+	if err := w.c.DidChangeTextDocument(params); err != nil {
+		return err
+	}
+	return w.f.Update(p0, p1, s)
 }
 
 func (w *Win) makeContentChangeEvent(p0, p1 outline.Pos, s string) (*lsp.DidChangeTextDocumentParams, error) {
@@ -148,6 +136,18 @@ func (w *Win) makeContentChangeEvent(p0, p1 outline.Pos, s string) (*lsp.DidChan
 	}, nil
 }
 
+func (w *Win) execute(e *acme.Event) error {
+	switch string(e.Text) {
+	case "Def":
+		return w.ExecDef()
+	case "Put":
+		return w.ExecPut()
+	default:
+		// TODO(lufia): kbd event will become an error.
+		return w.acme.WriteEvent(e)
+	}
+}
+
 func (w *Win) ExecDef() error {
 	if err := w.acme.Ctl("addr=dot"); err != nil {
 		return err
@@ -183,6 +183,15 @@ func (w *Win) ExecDef() error {
 	}
 	w.acme.Errf("%s:#%d,#%d", file, q0, q1)
 	return nil
+}
+
+func (w *Win) ExecPut() error {
+	return w.c.WillSave(&lsp.WillSaveTextDocumentParams{
+		TextDocument: lsp.TextDocumentIdentifier{
+			URI: w.c.URL(w.file),
+		},
+		Reason: lsp.TextDocumentSaveReasonManual,
+	})
 }
 
 func rangeToPos(file string, r *lsp.Range) (q0, q1 int, err error) {
