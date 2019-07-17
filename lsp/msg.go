@@ -372,3 +372,25 @@ func (c *Client) GotoDefinition(params *TextDocumentPositionParams) *LocationsRe
 func (r *LocationsResult) Wait() error {
 	return r.c.Wait(r.call)
 }
+
+// PublishDiagnosticsParams represents the interface described in the specification.
+type PublishDiagnosticsParams struct {
+	URI         DocumentURI  `json:"uri"`
+	Diagnostics []Diagnostic `json:"diagnostics"`
+}
+
+// Diagnostics represents the interface described in the specification.
+type Diagnostic struct {
+	Range              Range                          `json:"range"`
+	Severity           int                            `json:"severity,omitempty"`
+	Code               string                         `json:"code,omitempty"`
+	Source             string                         `json:"source,omitempty"`
+	Message            string                         `json:"message"`
+	RelatedInformation []DiagnosticRelatedInformation `json:"relatedInformation,omitempty"`
+}
+
+// DiagnosticRelatedInformation represents the interface described in the specification.
+type DiagnosticRelatedInformation struct {
+	Location Location `json:"location"`
+	Message  string   `json:"message"`
+}
