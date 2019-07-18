@@ -125,6 +125,8 @@ type Client struct {
 	lastID int
 	conn   io.ReadWriteCloser
 	c      chan *Call
+
+	cap ServerCapabilities
 }
 
 // NewClient returns a client that communicates to the server with conn.

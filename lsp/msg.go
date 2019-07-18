@@ -173,8 +173,16 @@ type ServerCapabilities struct {
 
 // TextDocumentSyncOptions represents the interface described in the specification.
 type TextDocumentSyncOptions struct {
-	OpenClose bool `json:"openClose"`
-	Change    int  `json:"change"`
+	OpenClose         bool        `json:"openClose,omitempty"`
+	Change            int         `json:"change,omitempty"`
+	WillSave          bool        `json:"willSave,omitempty"`
+	WillSaveWaitUntil bool        `json:"willSaveWaitUntil,omitempty"`
+	Save              SaveOptions `json:"save,omitempty"`
+}
+
+// SaveOptions represents the interface described in the specification.
+type SaveOptions struct {
+	IncludeText bool `json:"includeText,omitempty"`
 }
 
 // CompletionOptions represents the interface described in the specification.
@@ -206,7 +214,11 @@ func (c *Client) Initialize(params *InitializeParams) *InitializeResult {
 
 // Wait waits for a response of initialize request.
 func (r *InitializeResult) Wait() error {
-	return r.c.Wait(r.call)
+	if err := r.c.Wait(r.call); err != nil {
+		return err
+	}
+	r.c.cap = r.Capabilities
+	return nil
 }
 
 // InitializedParams represents the interface described in the specification.
@@ -326,12 +338,29 @@ type TextEditsResult struct {
 	call *Call
 }
 
+// Wait waits for a response of any request.
+func (r *TextEditsResult) Wait() error {
+	return r.c.Wait(r.call)
+}
+
 // WillSaveWaitUntilTextDocument sends the document will save request to the server.
 func (c *Client) WillSaveWaitUntilTextDocument(params *WillSaveTextDocumentParams) *TextEditsResult {
 	var result TextEditsResult
 	result.c = c
 	result.call = c.Call("textDocument/willSaveWaitUntil", params, &result.TextEdits)
 	return &result
+}
+
+// WillSave will call either WillSaveTextDocument or WillSaveWaitUntilTextDocument if enabled.
+func (c *Client) WillSave(params *WillSaveTextDocumentParams) error {
+	switch {
+	case c.cap.TextDocumentSync.WillSave:
+		return c.WillSaveTextDocument(params)
+	case c.cap.TextDocumentSync.WillSaveWaitUntil:
+		return c.WillSaveWaitUntilTextDocument(params).Wait()
+	default:
+		return nil
+	}
 }
 
 // DidSaveTextDocumentParams represents the interface described in the specification.
