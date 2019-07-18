@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path"
 	"time"
@@ -32,7 +33,7 @@ func OpenFile(id int, file string, c *lsp.Client) (*Win, error) {
 	w := Win{
 		file: file,
 		acme: p,
-		tag:  "Put Def",
+		tag:  "Put Doc",
 		c:    c,
 	}
 
@@ -86,6 +87,7 @@ func (w *Win) handleEvent(e *acme.Event) error {
 	case 'x', 'X':
 		return w.execute(e)
 	case 'l', 'L':
+		return w.look(e)
 	}
 	return nil
 }
@@ -138,8 +140,6 @@ func (w *Win) makeContentChangeEvent(p0, p1 outline.Pos, s string) (*lsp.DidChan
 
 func (w *Win) execute(e *acme.Event) error {
 	switch string(e.Text) {
-	case "Def":
-		return w.ExecDef()
 	case "Put":
 		return w.ExecPut()
 	default:
@@ -148,7 +148,7 @@ func (w *Win) execute(e *acme.Event) error {
 	}
 }
 
-func (w *Win) ExecDef() error {
+func (w *Win) look(e *acme.Event) error {
 	if err := w.acme.Ctl("addr=dot"); err != nil {
 		return err
 	}
@@ -181,8 +181,54 @@ func (w *Win) ExecDef() error {
 	if err != nil {
 		return err
 	}
-	w.acme.Errf("%s:#%d,#%d", file, q0, q1)
+	w.printResult(file, q0, q1)
 	return nil
+}
+
+func (w *Win) printResult(file string, q0, q1 int) {
+	r, err := os.Open(file)
+	if err != nil {
+		w.acme.Errf("can't open %s: %v", file, err)
+		return
+	}
+	defer r.Close()
+
+	f, err := outline.NewFile(r)
+	if err != nil {
+		w.acme.Errf("can't read %s: %v", file, err)
+		return
+	}
+	data, err := w.readRange(r, q0, q1)
+	if err != nil {
+		w.acme.Errf("can't read %s: %v", file, err)
+		return
+	}
+	addr0, err := f.Addr(outline.Pos(q0))
+	if err != nil {
+		w.acme.Errf("%s:#%d: %v", file, q0, err)
+		return
+	}
+	addr1, err := f.Addr(outline.Pos(q1))
+	if err != nil {
+		w.acme.Errf("%s:#%d: %v", file, q1, err)
+		return
+	}
+	if addr0.Line == addr1.Line {
+		w.acme.Errf("%s:%d %s", file, addr0.Line+1, data)
+	} else {
+		w.acme.Errf("%s:%d,%d %s", file, addr0.Line+1, addr1.Line+1, data)
+	}
+}
+
+func (w *Win) readRange(f io.ReadSeeker, q0, q1 int) ([]byte, error) {
+	if _, err := f.Seek(int64(q0), 0); err != nil {
+		return nil, err
+	}
+	buf := make([]byte, q1-q0)
+	if _, err := f.Read(buf[:]); err != nil {
+		return nil, err
+	}
+	return buf, nil
 }
 
 func (w *Win) ExecPut() error {
