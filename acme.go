@@ -189,7 +189,7 @@ func (w *Win) look(e *acme.Event) error {
 		},
 	})
 	if err := r.Wait(); err != nil {
-		return err
+		return w.acme.WriteEvent(e)
 	}
 
 	l := r.Locations[0]
