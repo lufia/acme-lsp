@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -27,7 +28,17 @@ type File struct {
 	v []Pos
 }
 
-// NewFile returns File initialized with contents of r.
+// Open returns a File initialized with contents of file.
+func Open(file string) (*File, error) {
+	r, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return NewFile(r)
+}
+
+// NewFile returns a File initialized with contents of r.
 func NewFile(r io.Reader) (*File, error) {
 	v, err := makeOutline(r)
 	if err != nil {
