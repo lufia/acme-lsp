@@ -151,6 +151,8 @@ func (w *Win) execute(e *acme.Event) error {
 	case "Put":
 		return w.ExecPut()
 	case "Doc":
+		return w.ExecDoc()
+	case "Test":
 		return xerrors.New("not implement")
 	default:
 		// TODO(lufia): kbd event will become an error.
@@ -246,6 +248,23 @@ func (w *Win) ExecPut() error {
 		},
 		Reason: lsp.TextDocumentSaveReasonManual,
 	})
+}
+
+func (w *Win) ExecDoc() error {
+	result := w.c.DocumentLink(&lsp.DocumentLinkParams{
+		TextDocument: lsp.TextDocumentIdentifier{
+			URI: w.c.URL(w.file),
+		},
+	})
+	if err := result.Wait(); err != nil {
+		return err
+	}
+	for _, link := range result.DocumentLinks {
+		if link.Target != "" {
+			w.acme.Errf("%s", string(link.Target))
+		}
+	}
+	return nil
 }
 
 func rangeToPos(file string, r *lsp.Range) (q0, q1 int, err error) {
