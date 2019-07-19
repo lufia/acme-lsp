@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"encoding/json"
 	"net/url"
 	"os"
 	"path"
@@ -9,6 +10,7 @@ import (
 /*
  * field:  type | null => pointer to type
  * field?: type        => omitempty
+ * field?: any         => json.RawMessage
  */
 
 const fileSchema = "file://"
@@ -385,6 +387,39 @@ func (c *Client) GotoDefinition(params *TextDocumentPositionParams) *LocationsRe
 
 // Wait waits for a response of any request.
 func (r *LocationsResult) Wait() error {
+	return r.c.Wait(r.call)
+}
+
+// DocumentLinkParams represents the interface described in the specification.
+type DocumentLinkParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+}
+
+// DocumentLink represents the interface described in the specification.
+type DocumentLink struct {
+	Range  Range           `json:"range"`
+	Target DocumentURI     `json:"target,omitempty"`
+	Data   json.RawMessage `json:"data,omitempty"`
+}
+
+// DocumentLinksResult represents a result object for methods returning an array of DocumentLink.
+type DocumentLinksResult struct {
+	DocumentLinks []DocumentLink
+
+	c    *Client
+	call *Call
+}
+
+// DocumentLink sends the document link request to the server.
+func (c *Client) DocumentLink(params *DocumentLinkParams) *DocumentLinksResult {
+	var result DocumentLinksResult
+	result.c = c
+	result.call = c.Call("textDocument/documentLink", params, &result.DocumentLinks)
+	return &result
+}
+
+// Wait waits for a response of document link request.
+func (r *DocumentLinksResult) Wait() error {
 	return r.c.Wait(r.call)
 }
 

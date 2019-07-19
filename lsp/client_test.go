@@ -109,7 +109,7 @@ func TestPLS(t *testing.T) {
 				URI: DocumentURI(c.URL("pkg.go").String()),
 			},
 			Position: Position{
-				Line:      6,
+				Line:      11,
 				Character: 10,
 			},
 		})
@@ -122,11 +122,30 @@ func TestPLS(t *testing.T) {
 			return
 		}
 		want := Range{
-			Start: Position{Line: 2, Character: 5},
-			End:   Position{Line: 2, Character: 13},
+			Start: Position{Line: 6, Character: 5},
+			End:   Position{Line: 6, Character: 13},
 		}
 		if loc := result.Locations[0]; loc.Range != want {
 			t.Errorf("Location.Range = %v; want %v", loc.Range, want)
+		}
+	})
+
+	t.Run("textDocument/documentLink", func(t *testing.T) {
+		result := c.DocumentLink(&DocumentLinkParams{
+			TextDocument: TextDocumentIdentifier{
+				URI: c.URL("pkg.go"),
+			},
+		})
+		if err := result.Wait(); err != nil {
+			t.Errorf("DocumentLink: %v", err)
+		}
+		if n := len(result.DocumentLinks); n != 1 {
+			t.Errorf("len(DocumentLinks) = %d; want 1", n)
+			return
+		}
+		want := DocumentURI("https://godoc.org/io")
+		if l := result.DocumentLinks[0]; l.Target != want {
+			t.Errorf("DocumentLink.Target = %v; want %v", l.Target, want)
 		}
 	})
 
