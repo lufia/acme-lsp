@@ -11,6 +11,7 @@ import (
 	"9fans.net/go/acme"
 	"github.com/lufia/acme-lsp/lsp"
 	"github.com/lufia/acme-lsp/outline"
+	"golang.org/x/xerrors"
 )
 
 type Win struct {
@@ -142,23 +143,32 @@ func (w *Win) execute(e *acme.Event) error {
 	switch string(e.Text) {
 	case "Put":
 		return w.ExecPut()
+	case "Doc":
+		return xerrors.New("not implement")
 	default:
 		// TODO(lufia): kbd event will become an error.
 		return w.acme.WriteEvent(e)
 	}
 }
 
-func (w *Win) look(e *acme.Event) error {
+// readCursor returns a beginning address pointed by cursor.
+func (w *Win) readCursor() (int, error) {
+	// Acme can't set addr to dot at only once
+	// from a window is opened if addr isn't reset by 0.
+	w.acme.Addr("0")
+
 	if err := w.acme.Ctl("addr=dot"); err != nil {
-		return err
+		return 0, err
 	}
-	q0, q1, err := w.acme.ReadAddr()
+	q0, _, err := w.acme.ReadAddr()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	w.acme.Errf("Def: %d %d %v", q0, q1, err)
-	p0 := outline.Pos(q0)
-	addr, err := w.f.Addr(p0)
+	return q0, nil
+}
+
+func (w *Win) look(e *acme.Event) error {
+	addr, err := w.f.Addr(outline.Pos(e.Q0))
 	if err != nil {
 		return err
 	}
@@ -177,7 +187,7 @@ func (w *Win) look(e *acme.Event) error {
 
 	l := r.Locations[0]
 	file := l.URI.String()
-	q0, q1, err = rangeToPos(l.URI.String(), &l.Range)
+	q0, q1, err := rangeToPos(l.URI.String(), &l.Range)
 	if err != nil {
 		return err
 	}
@@ -208,16 +218,7 @@ func (w *Win) printResult(file string, q0, q1 int) {
 		w.acme.Errf("%s:#%d: %v", file, q0, err)
 		return
 	}
-	addr1, err := f.Addr(outline.Pos(q1))
-	if err != nil {
-		w.acme.Errf("%s:#%d: %v", file, q1, err)
-		return
-	}
-	if addr0.Line == addr1.Line {
-		w.acme.Errf("%s:%d %s", file, addr0.Line+1, data)
-	} else {
-		w.acme.Errf("%s:%d,%d %s", file, addr0.Line+1, addr1.Line+1, data)
-	}
+	w.acme.Errf("%s:%d %s", file, addr0.Line+1, data)
 }
 
 func (w *Win) readRange(f io.ReadSeeker, q0, q1 int) ([]byte, error) {
@@ -281,6 +282,9 @@ func start(c *lsp.Client) error {
 		for msg := range c.Event {
 			switch msg.Method {
 			case "textDocument/publishDiagnostics":
+				if !*debugFlag {
+					continue
+				}
 				var params lsp.PublishDiagnosticsParams
 				err := json.Unmarshal([]byte(msg.Params), &params)
 				if err != nil {

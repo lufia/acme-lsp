@@ -1,13 +1,20 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	"9fans.net/go/acme"
 	"github.com/lufia/acme-lsp/lsp"
 )
 
+var (
+	debugFlag = flag.Bool("d", false, "enable debigging logs")
+)
+
 func main() {
+	flag.Parse()
+
 	// This app watches all window.
 	acme.AutoExit(false)
 
