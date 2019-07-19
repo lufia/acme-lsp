@@ -38,7 +38,7 @@ func OpenFile(id int, file string, c *lsp.Client) (*Win, error) {
 		c:    c,
 	}
 
-	body, err := p.ReadAll("body")
+	body, err := w.acme.ReadAll("body")
 	if err != nil {
 		w.Close()
 		return nil, err
@@ -50,15 +50,22 @@ func OpenFile(id int, file string, c *lsp.Client) (*Win, error) {
 	}
 	w.f = f
 	w.acme.Fprintf("tag", " %s ", w.tag)
-	if err := w.didOpenFile(); err != nil {
+	if err := w.didOpenFile(body); err != nil {
 		w.Close()
 		return nil, err
 	}
 	return &w, nil
 }
 
-func (w *Win) didOpenFile() error {
-	return w.c.DidOpenTextDocument(w.file, "go")
+func (w *Win) didOpenFile(body []byte) error {
+	return w.c.DidOpenTextDocument(&lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:        w.c.URL(w.file),
+			LanguageID: "go",
+			Version:    1,
+			Text:       string(body),
+		},
+	})
 }
 
 func (w *Win) closeFile() error {

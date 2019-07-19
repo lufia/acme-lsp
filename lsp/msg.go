@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"io/ioutil"
 	"net/url"
 	"os"
 	"path"
@@ -268,21 +267,8 @@ type TextDocumentItem struct {
 }
 
 // DidOpenTextDocument sends the document open notification to the server.
-func (c *Client) DidOpenTextDocument(file, lang string) error {
-	u := c.URL(file)
-	b, err := ioutil.ReadFile(u.String())
-	if err != nil {
-		return err
-	}
-	params := DidOpenTextDocumentParams{
-		TextDocument: TextDocumentItem{
-			URI:        u,
-			LanguageID: lang,
-			Version:    1,
-			Text:       string(b),
-		},
-	}
-	call := c.Call("textDocument/didOpen", &params, nil)
+func (c *Client) DidOpenTextDocument(params *DidOpenTextDocumentParams) error {
+	call := c.Call("textDocument/didOpen", params, nil)
 	return c.Wait(call)
 }
 

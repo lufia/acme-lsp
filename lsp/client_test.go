@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"testing"
 )
 
@@ -72,20 +73,33 @@ func TestPLS(t *testing.T) {
 			Trace:   "verbose",
 		})
 		if err := result.Wait(); err != nil {
-			t.Errorf("Wait(): %v", err)
+			t.Errorf("Initialize: %v", err)
 		}
 		t.Logf("body: %v\n", *result)
 	})
 
 	t.Run("initialized", func(t *testing.T) {
 		if err := c.Initialized(&InitializedParams{}); err != nil {
-			t.Errorf("Initialized(): %v", err)
+			t.Errorf("Initialized: %v", err)
 		}
 	})
 
 	t.Run("textDocument/didOpen", func(t *testing.T) {
-		if err := c.DidOpenTextDocument("pkg.go", "go"); err != nil {
-			t.Errorf("DidOpenTextDocument(): %v", err)
+		u := c.URL("pkg.go")
+		b, err := ioutil.ReadFile(u.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = c.DidOpenTextDocument(&DidOpenTextDocumentParams{
+			TextDocument: TextDocumentItem{
+				URI:        u,
+				LanguageID: "go",
+				Version:    1,
+				Text:       string(b),
+			},
+		})
+		if err != nil {
+			t.Errorf("DidOpenTextDocument: %v", err)
 		}
 	})
 
@@ -100,7 +114,7 @@ func TestPLS(t *testing.T) {
 			},
 		})
 		if err := result.Wait(); err != nil {
-			t.Errorf("Wait(): %v", err)
+			t.Errorf("GotoDefinition: %v", err)
 			return
 		}
 		if n := len(result.Locations); n != 1 {
@@ -116,17 +130,46 @@ func TestPLS(t *testing.T) {
 		}
 	})
 
+	t.Run("textDocument/willSave", func(t *testing.T) {
+		err := c.WillSaveTextDocument(&WillSaveTextDocumentParams{
+			TextDocument: TextDocumentIdentifier{
+				URI: c.URL("pkg.go"),
+			},
+			Reason: TextDocumentSaveReasonManual,
+		})
+		if err != nil {
+			t.Errorf("WillSaveTextDocument: %v", err)
+		}
+	})
+
+	t.Run("textDocument/willSaveWaitUntil", func(t *testing.T) {
+		if !c.cap.TextDocumentSync.WillSaveWaitUntil {
+			t.Skip()
+			return
+		}
+		result := c.WillSaveWaitUntilTextDocument(&WillSaveTextDocumentParams{
+			TextDocument: TextDocumentIdentifier{
+				URI: c.URL("pkg.go"),
+			},
+			Reason: TextDocumentSaveReasonAfterDelay,
+		})
+		if err := result.Wait(); err != nil {
+			t.Errorf("WillSaveWaitUntilTextDocument: %v", err)
+		}
+		t.Logf("body: %v\n", *result)
+	})
+
 	t.Run("shutdown", func(t *testing.T) {
 		result := c.Shutdown()
 		if err := result.Wait(); err != nil {
-			t.Errorf("Wait(): %v", err)
+			t.Errorf("Shutdown: %v", err)
 		}
 		t.Logf("body: %v\n", *result)
 	})
 
 	t.Run("exit", func(t *testing.T) {
 		if err = c.Exit(); err != nil {
-			t.Errorf("Exit(): %v", err)
+			t.Errorf("Exit: %v", err)
 		}
 	})
 
