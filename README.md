@@ -1,5 +1,24 @@
 # acme-lsp
 
+Acme-lsp is Language Server Protocol integration for Acme.
+
+This is in development so it isn't stable yet. Please file a bug if you have find a bug.
+
+## Installation
+
+This app requiers [gopls](https://github.com/golang/go/wiki/gopls).
+
+To install:
+
+```console
+$ go get golang.org/x/tools/gopls@latest
+$ go get github.com/lufia/acme-lsp
+```
+
+## Usage
+
+You can run `Local acme-lsp` by 3 button of mouse in Acme window anywhere, usually tag line. Then app starts watching events that Go source files is opened.
+
 ## Features
 
 ### Jump to definition or declaration
