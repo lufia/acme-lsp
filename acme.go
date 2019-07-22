@@ -34,7 +34,7 @@ func OpenFile(id int, file string, c *lsp.Client) (*Win, error) {
 	w := Win{
 		file: file,
 		acme: p,
-		tag:  "Put Doc",
+		tag:  "Ref Doc",
 		c:    c,
 	}
 
@@ -150,6 +150,8 @@ func (w *Win) execute(e *acme.Event) error {
 	switch string(e.Text) {
 	case "Put":
 		return w.ExecPut()
+	case "Ref":
+		return w.ExecRef()
 	case "Doc":
 		return w.ExecDoc()
 	case "Test":
@@ -248,6 +250,39 @@ func (w *Win) ExecPut() error {
 		},
 		Reason: lsp.TextDocumentSaveReasonManual,
 	})
+}
+
+func (w *Win) ExecRef() error {
+	q, err := w.readCursor()
+	if err != nil {
+		return err
+	}
+	addr, err := w.f.Addr(outline.Pos(q))
+	if err != nil {
+		return err
+	}
+	result := w.c.References(&lsp.ReferenceParams{
+		TextDocumentPositionParams: lsp.TextDocumentPositionParams{
+			TextDocument: lsp.TextDocumentIdentifier{
+				URI: w.c.URL(w.file),
+			},
+			Position: lsp.Position{
+				Line:      int(addr.Line),
+				Character: int(addr.Col),
+			},
+		},
+		Context: lsp.ReferenceContext{
+			IncludeDeclaration: false,
+		},
+	})
+	if err := result.Wait(); err != nil {
+		return err
+	}
+	for _, loc := range result.Locations {
+		file := loc.URI.String()
+		w.acme.Errf("%s:%d", file, loc.Range.Start.Line+1)
+	}
+	return nil
 }
 
 func (w *Win) ExecDoc() error {
