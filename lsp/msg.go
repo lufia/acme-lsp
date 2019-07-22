@@ -390,6 +390,24 @@ func (r *LocationsResult) Wait() error {
 	return r.c.Wait(r.call)
 }
 
+// ReferenceParams represents the interface described in the specification.
+type ReferenceParams struct {
+	TextDocumentPositionParams
+	Context ReferenceContext `json:"context"`
+}
+
+// ReferenceContext represents the interface described in the specification.
+type ReferenceContext struct {
+	IncludeDeclaration bool `json:"includeDeclaration"`
+}
+
+func (c *Client) References(params *ReferenceParams) *LocationsResult {
+	var result LocationsResult
+	result.c = c
+	result.call = c.Call("textDocument/references", params, &result.Locations)
+	return &result
+}
+
 // DocumentLinkParams represents the interface described in the specification.
 type DocumentLinkParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`

@@ -130,6 +130,38 @@ func TestPLS(t *testing.T) {
 		}
 	})
 
+	t.Run("textDocument/references", func(t *testing.T) {
+		result := c.References(&ReferenceParams{
+			TextDocumentPositionParams: TextDocumentPositionParams{
+				TextDocument: TextDocumentIdentifier{
+					URI: DocumentURI(c.URL("pkg.go").String()),
+				},
+				Position: Position{
+					Line:      11,
+					Character: 10,
+				},
+			},
+			Context: ReferenceContext{
+				IncludeDeclaration: true,
+			},
+		})
+		if err := result.Wait(); err != nil {
+			t.Errorf("GotoDefinition: %v", err)
+			return
+		}
+		if n := len(result.Locations); n != 2 {
+			t.Errorf("len(Locations) = %d; want 2", n)
+			return
+		}
+		want := Range{
+			Start: Position{Line: 6, Character: 5},
+			End:   Position{Line: 6, Character: 13},
+		}
+		if loc := result.Locations[0]; loc.Range != want {
+			t.Errorf("Location.Range = %v; want %v", loc.Range, want)
+		}
+	})
+
 	t.Run("textDocument/documentLink", func(t *testing.T) {
 		result := c.DocumentLink(&DocumentLinkParams{
 			TextDocument: TextDocumentIdentifier{
