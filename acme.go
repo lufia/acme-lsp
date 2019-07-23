@@ -244,6 +244,7 @@ func (w *Win) readRange(f io.ReadSeeker, q0, q1 int) ([]byte, error) {
 }
 
 func (w *Win) ExecPut() error {
+	defer w.acme.Ctl("put")
 	return w.c.WillSave(&lsp.WillSaveTextDocumentParams{
 		TextDocument: lsp.TextDocumentIdentifier{
 			URI: w.c.URL(w.file),
