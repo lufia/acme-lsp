@@ -31,3 +31,4 @@ If acme-lsp couldn't find definition or declaration of the token, will search th
 ## TODO
 - go-fmt before saving (textDocument/formatting)
 - run go-test
+- didOpen after Get
