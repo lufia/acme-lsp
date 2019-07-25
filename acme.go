@@ -57,6 +57,12 @@ func OpenFile(id int, file string, c *lsp.Client) (*Win, error) {
 	return &w, nil
 }
 
+func (w *Win) DocumentID() lsp.TextDocumentIdentifier {
+	return lsp.TextDocumentIdentifier{
+		URI: w.c.URL(w.file),
+	}
+}
+
 func (w *Win) didOpenFile(body []byte) error {
 	return w.c.DidOpenTextDocument(&lsp.DidOpenTextDocumentParams{
 		TextDocument: lsp.TextDocumentItem{
@@ -122,10 +128,8 @@ func (w *Win) makeContentChangeEvent(p0, p1 outline.Pos, s string) (*lsp.DidChan
 	}
 	return &lsp.DidChangeTextDocumentParams{
 		TextDocument: lsp.VersionedTextDocumentIdentifier{
-			TextDocumentIdentifier: lsp.TextDocumentIdentifier{
-				URI: w.c.URL(w.file),
-			},
-			Version: nil, // TODO(lufia): implement
+			TextDocumentIdentifier: w.DocumentID(),
+			Version:                nil, // TODO(lufia): implement
 		},
 		ContentChanges: []lsp.TextDocumentContentChangeEvent{
 			{
@@ -184,9 +188,7 @@ func (w *Win) look(e *acme.Event) error {
 		return err
 	}
 	r := w.c.GotoDefinition(&lsp.TextDocumentPositionParams{
-		TextDocument: lsp.TextDocumentIdentifier{
-			URI: w.c.URL(w.file),
-		},
+		TextDocument: w.DocumentID(),
 		Position: lsp.Position{
 			Line:      int(addr.Line),
 			Character: int(addr.Col),
@@ -246,10 +248,8 @@ func (w *Win) readRange(f io.ReadSeeker, q0, q1 int) ([]byte, error) {
 func (w *Win) ExecPut() error {
 	defer w.acme.Ctl("put")
 	return w.c.WillSave(&lsp.WillSaveTextDocumentParams{
-		TextDocument: lsp.TextDocumentIdentifier{
-			URI: w.c.URL(w.file),
-		},
-		Reason: lsp.TextDocumentSaveReasonManual,
+		TextDocument: w.DocumentID(),
+		Reason:       lsp.TextDocumentSaveReasonManual,
 	})
 }
 
@@ -264,9 +264,7 @@ func (w *Win) ExecRef() error {
 	}
 	result := w.c.References(&lsp.ReferenceParams{
 		TextDocumentPositionParams: lsp.TextDocumentPositionParams{
-			TextDocument: lsp.TextDocumentIdentifier{
-				URI: w.c.URL(w.file),
-			},
+			TextDocument: w.DocumentID(),
 			Position: lsp.Position{
 				Line:      int(addr.Line),
 				Character: int(addr.Col),
@@ -288,9 +286,7 @@ func (w *Win) ExecRef() error {
 
 func (w *Win) ExecDoc() error {
 	result := w.c.DocumentLink(&lsp.DocumentLinkParams{
-		TextDocument: lsp.TextDocumentIdentifier{
-			URI: w.c.URL(w.file),
-		},
+		TextDocument: w.DocumentID(),
 	})
 	if err := result.Wait(); err != nil {
 		return err
