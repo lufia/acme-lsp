@@ -74,9 +74,10 @@ func (w *Win) didOpenFile(body []byte) error {
 	})
 }
 
-func (w *Win) closeFile() error {
-	// TODO(lufia): willClose
-	return nil
+func (w *Win) didSave() error {
+	return w.c.DidSaveTextDocument(&lsp.DidSaveTextDocumentParams{
+		TextDocument: w.DocumentID(),
+	})
 }
 
 func (w *Win) watch() {
@@ -388,6 +389,10 @@ func start(c *lsp.Client) error {
 			}
 			wins[ev.ID] = w
 			go w.watch()
+		case "put":
+			if w, ok := wins[ev.ID]; ok {
+				w.didSave()
+			}
 		case "del":
 			if w, ok := wins[ev.ID]; ok {
 				w.Close()
