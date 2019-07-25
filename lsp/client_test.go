@@ -210,6 +210,28 @@ func TestPLS(t *testing.T) {
 		t.Logf("body: %v\n", *result)
 	})
 
+	t.Run("textDocument/didSave", func(t *testing.T) {
+		err := c.DidSaveTextDocument(&DidSaveTextDocumentParams{
+			TextDocument: TextDocumentIdentifier{
+				URI: c.URL("pkg.go"),
+			},
+		})
+		if err != nil {
+			t.Errorf("DidSaveTextDocument: %v", err)
+		}
+	})
+
+	t.Run("textDocument/didClose", func(t *testing.T) {
+		err := c.DidCloseTextDocument(&DidCloseTextDocumentParams{
+			TextDocument: TextDocumentIdentifier{
+				URI: c.URL("pkg.go"),
+			},
+		})
+		if err != nil {
+			t.Errorf("DidCloseTextDocument: %v", err)
+		}
+	})
+
 	t.Run("shutdown", func(t *testing.T) {
 		result := c.Shutdown()
 		if err := result.Wait(); err != nil {

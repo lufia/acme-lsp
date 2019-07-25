@@ -363,6 +363,17 @@ func (c *Client) DidSaveTextDocument(params *DidSaveTextDocumentParams) error {
 	return c.Wait(call)
 }
 
+// DidCloseTextDocumentParams represents the interface described in the specification.
+type DidCloseTextDocumentParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+}
+
+// DidCloseTextDocument sends the document close notification to the server.
+func (c *Client) DidCloseTextDocument(params *DidCloseTextDocumentParams) error {
+	call := c.Call("textDocument/didClose", params, nil)
+	return c.Wait(call)
+}
+
 // TextDocumentPositionParams represents the interface described in the specification.
 type TextDocumentPositionParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
