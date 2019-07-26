@@ -334,6 +334,12 @@ func rangeToPos(file string, r *lsp.Range) (q0, q1 int, err error) {
 
 func (w *Win) Close() {
 	w.acme.CloseFiles()
+	err := w.c.DidCloseTextDocument(&lsp.DidCloseTextDocumentParams{
+		TextDocument: w.DocumentID(),
+	})
+	if err != nil {
+		w.acme.Errf("can't send textDocument/didClose notification: %v", err)
+	}
 }
 
 func start(c *lsp.Client) error {
