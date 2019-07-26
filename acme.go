@@ -74,6 +74,11 @@ func (w *Win) didOpenFile(body []byte) error {
 	})
 }
 
+func (w *Win) Reload() error {
+	// TODO(lufia): reload file content
+	return nil
+}
+
 func (w *Win) didSave() error {
 	return w.c.DidSaveTextDocument(&lsp.DidSaveTextDocumentParams{
 		TextDocument: w.DocumentID(),
@@ -383,6 +388,8 @@ func start(c *lsp.Client) error {
 		if err != nil {
 			return err
 		}
+		// TODO(lufia): when open a directory that exists go.mod and outside of GOPATH,
+		// we shoudl register that directory as LSP workspace.
 		if path.Ext(ev.Name) != ".go" {
 			continue
 		}
@@ -395,6 +402,10 @@ func start(c *lsp.Client) error {
 			}
 			wins[ev.ID] = w
 			go w.watch()
+		case "get":
+			if w, ok := wins[ev.ID]; ok {
+				w.Reload()
+			}
 		case "put":
 			if w, ok := wins[ev.ID]; ok {
 				w.didSave()
