@@ -49,12 +49,39 @@ func OpenFile(id int, file string, c *lsp.Client) (*Win, error) {
 		return nil, err
 	}
 	w.f = f
-	w.acme.Fprintf("tag", " %s ", w.tag)
+	w.acme.Fprintf("tag", "%s", w.tag)
 	if err := w.didOpenFile(body); err != nil {
 		w.Close()
 		return nil, err
 	}
 	return &w, nil
+}
+
+func (w *Win) setTag(isDirty bool) error {
+	cur, err := w.acme.ReadAll("tag")
+	if err != nil {
+		return err
+	}
+	parts := bytes.Split(cur, []byte("|"))
+	if len(parts) < 2 {
+		xerrors.New("tag in non standard format")
+	}
+	w.acme.Ctl("cleartag")
+	cur = parts[1]
+	if isDirty {
+		if !bytes.Contains(cur, []byte("Put")) {
+			cur = []byte(string(cur) + " Put")
+		}
+		if !bytes.Contains(cur, []byte("Undo")) {
+			cur = []byte(string(cur) + " Undo")
+		}
+	} else {
+		if bytes.Contains(cur, []byte("Put")) {
+			cur = bytes.Replace(cur, []byte(" Put"), []byte{}, -1)
+		}
+	}
+	_, err = w.acme.Write("tag", cur)
+	return err
 }
 
 func (w *Win) DocumentID() lsp.TextDocumentIdentifier {
@@ -100,9 +127,11 @@ func (w *Win) handleEvent(e *acme.Event) error {
 	s := string(e.Text)
 	switch e.C2 {
 	case 'I':
+		w.setTag(true)
 		off := p1 - p0
 		return w.updateBody(p0, p1-off, s)
 	case 'D':
+		w.setTag(true)
 		return w.updateBody(p0, p1, "")
 	case 'x', 'X':
 		return w.execute(e)
@@ -408,6 +437,7 @@ func start(c *lsp.Client) error {
 			}
 		case "put":
 			if w, ok := wins[ev.ID]; ok {
+				w.setTag(false)
 				w.didSave()
 			}
 		case "del":
