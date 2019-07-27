@@ -64,7 +64,7 @@ func (w *Win) setTag(isDirty bool) error {
 	}
 	parts := bytes.Split(cur, []byte("|"))
 	if len(parts) < 2 {
-		xerrors.New("tag in non standard format")
+		return xerrors.New("tag in non standard format")
 	}
 	w.acme.Ctl("cleartag")
 	cur = parts[1]
