@@ -2,7 +2,9 @@ package lsp
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
+	"os/exec"
 	"testing"
 )
 
@@ -59,6 +61,9 @@ func TestMessage(t *testing.T) {
 func TestPLS(t *testing.T) {
 	conn, err := OpenCommand("gopls", "-v", "serve")
 	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			t.Skip()
+		}
 		t.Fatal(err)
 	}
 	defer conn.Close()
@@ -256,6 +261,9 @@ func TestPLS(t *testing.T) {
 func TestClientEventOverflow(t *testing.T) {
 	conn, err := OpenCommand("gopls", "-v", "serve")
 	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			t.Skip()
+		}
 		t.Fatal(err)
 	}
 	defer conn.Close()
