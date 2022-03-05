@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path"
@@ -11,7 +12,6 @@ import (
 	"9fans.net/go/acme"
 	"github.com/lufia/acme-lsp/lsp"
 	"github.com/lufia/acme-lsp/outline"
-	"golang.org/x/xerrors"
 )
 
 type Win struct {
@@ -64,7 +64,7 @@ func (w *Win) setTag(isDirty bool) error {
 	}
 	parts := bytes.Split(cur, []byte("|"))
 	if len(parts) < 2 {
-		return xerrors.New("tag in non standard format")
+		return errors.New("tag in non standard format")
 	}
 	w.acme.Ctl("cleartag")
 	cur = parts[1]
@@ -194,7 +194,7 @@ func (w *Win) execute(e *acme.Event) error {
 	case "Doc":
 		return w.ExecDoc()
 	case "Test":
-		return xerrors.New("not implement")
+		return errors.New("not implement")
 	default:
 		// TODO(lufia): kbd event will become an error.
 		return w.acme.WriteEvent(e)

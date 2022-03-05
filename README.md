@@ -11,8 +11,8 @@ This app requiers [gopls](https://github.com/golang/go/wiki/gopls).
 To install:
 
 ```console
-$ go get golang.org/x/tools/gopls@latest
-$ go get github.com/lufia/acme-lsp
+$ go install golang.org/x/tools/gopls@latest
+$ go install github.com/lufia/acme-lsp@latest
 ```
 
 ## Usage

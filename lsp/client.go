@@ -12,8 +12,6 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-
-	"golang.org/x/xerrors"
 )
 
 // PipeConn represents a connection to a process.
@@ -28,17 +26,17 @@ func OpenCommand(name string, args ...string) (*PipeConn, error) {
 	cmd := exec.Command(name, args...)
 	w, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, xerrors.Errorf("can't pipe: %w", err)
+		return nil, fmt.Errorf("can't pipe: %w", err)
 	}
 	r, err := cmd.StdoutPipe()
 	if err != nil {
 		w.Close()
-		return nil, xerrors.Errorf("can't pipe: %w", err)
+		return nil, fmt.Errorf("can't pipe: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
 		r.Close()
 		w.Close()
-		return nil, xerrors.Errorf("can't start gopls: %w", err)
+		return nil, fmt.Errorf("can't start gopls: %w", err)
 	}
 	return &PipeConn{cmd: cmd, r: r, w: w}, nil
 }
@@ -308,16 +306,16 @@ func (c *Client) readMessage(r *bufio.Reader) (*Message, error) {
 func (c *Client) writeJSON(args interface{}) error {
 	p, err := json.Marshal(args)
 	if err != nil {
-		return xerrors.Errorf("can't marshal: %w", err)
+		return fmt.Errorf("can't marshal: %w", err)
 	}
 	c.debugf("-> '%s'\n", p)
 	_, err = fmt.Fprintf(c.conn, "Content-Length: %d\r\n\r\n", len(p))
 	if err != nil {
-		return xerrors.Errorf("can't write: %w", err)
+		return fmt.Errorf("can't write: %w", err)
 	}
 	_, err = c.conn.Write(p)
 	if err != nil {
-		return xerrors.Errorf("can't write: %w", err)
+		return fmt.Errorf("can't write: %w", err)
 	}
 	return nil
 }
