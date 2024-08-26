@@ -1,3 +1,5 @@
+**Deprecated: use [9fans/acme-lsp](https://github.com/9fans/acme-lsp) instead.**
+
 # acme-lsp
 
 Acme-lsp is Language Server Protocol integration for Acme.
